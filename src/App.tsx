@@ -6,30 +6,38 @@ import { GarageView } from './components/desktop/GarageView';
 import { SUPER_CARS, SuperCarConfig } from './types';
 
 export const App: React.FC = () => {
-  const [mode, setMode] = useState<'desktop' | 'controller'>('desktop');
+  const [mode, setMode] = useState<'desktop' | 'controller'>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('mode') === 'controller' || window.location.pathname.includes('/controller')
+        ? 'controller'
+        : 'desktop';
+    }
+    return 'desktop';
+  });
+
   const [gameState, setGameState] = useState<'garage' | 'racing'>('racing');
   const [selectedCar, setSelectedCar] = useState<SuperCarConfig>(SUPER_CARS[0]); // Default to RAPTOR
-  const [roomId, setRoomId] = useState<string>('APEX99');
+
+  const [roomId, setRoomId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) return roomParam.toUpperCase();
+      return Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+    return 'APEX99';
+  });
+
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const modeParam = urlParams.get('mode');
     const roomParam = urlParams.get('room');
-
-    if (roomParam) {
+    if (roomParam && roomParam.toUpperCase() !== roomId) {
       setRoomId(roomParam.toUpperCase());
-    } else {
-      const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      setRoomId(randomCode);
     }
-
-    if (modeParam === 'controller' || window.location.pathname.includes('/controller')) {
-      setMode('controller');
-    } else {
-      setMode('desktop');
-    }
-  }, []);
+  }, [roomId]);
 
   if (mode === 'controller') {
     return <MobileController roomId={roomId} />;

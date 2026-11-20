@@ -56,11 +56,12 @@ export const DesktopHost: React.FC<DesktopHostProps> = ({ roomId, onLaunchGame }
     setControllerUrl(url);
 
     QRCode.toDataURL(url, {
-      width: 260,
-      margin: 2,
+      width: 320,
+      margin: 3,
+      errorCorrectionLevel: 'M',
       color: {
-        dark: '#00F2FE',
-        light: '#08090C'
+        dark: '#000000',
+        light: '#ffffff'
       }
     }).then(setQrDataUrl);
   }, [roomId, lanIp]);
@@ -348,9 +349,9 @@ export const DesktopHost: React.FC<DesktopHostProps> = ({ roomId, onLaunchGame }
             </p>
 
             {/* QR Code Container */}
-            <div className="bg-[#08090C] p-4 rounded-xl border border-cyan-500/30 flex items-center justify-center my-4 shadow-xl shadow-cyan-950/30">
+            <div className="bg-white p-3.5 rounded-xl shadow-xl flex items-center justify-center my-4">
               {qrDataUrl ? (
-                <img src={qrDataUrl} alt="Apex Drift Controller QR" className="rounded-lg w-56 h-56" />
+                <img src={qrDataUrl} alt="Apex Drift Controller QR" className="rounded-lg w-56 h-56 block" />
               ) : (
                 <div className="w-56 h-56 flex items-center justify-center text-gray-500">
                   Generating QR...

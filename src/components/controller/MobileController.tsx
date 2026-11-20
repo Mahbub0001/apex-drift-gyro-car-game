@@ -20,6 +20,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     recalibrate
   } = useDeviceOrientation();
 
+  const [currentRoomId, setCurrentRoomId] = useState<string>(roomId);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [ping, setPing] = useState<number>(0);
   const [hostTelemetry, setHostTelemetry] = useState<{ speedKmh: number; gear: number | string; rpm: number }>({
@@ -39,7 +40,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
   // Initialize WebRTC connection
   useEffect(() => {
-    const ctrl = new WebRTCController(roomId);
+    const ctrl = new WebRTCController(currentRoomId);
     controllerRef.current = ctrl;
 
     ctrl.connect(
@@ -59,7 +60,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
       clearInterval(pingCheck);
       ctrl.destroy();
     };
-  }, [roomId]);
+  }, [currentRoomId]);
 
   // Transmit inputs to desktop at 60 Hz
   useEffect(() => {
@@ -182,7 +183,17 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
               {isConnected ? `${ping}ms P2P` : 'CONNECTING...'}
             </span>
           </div>
-          <span className="text-xs text-gray-500 font-mono">ROOM: {roomId}</span>
+          <button
+            onClick={() => {
+              const code = prompt('Enter Desktop Room Code:', currentRoomId);
+              if (code && code.trim().length >= 4) {
+                setCurrentRoomId(code.trim().toUpperCase());
+              }
+            }}
+            className="text-[11px] text-cyan-300 font-mono bg-white/10 active:bg-cyan-500/30 px-2 py-0.5 rounded border border-white/10 hover:border-cyan-400"
+          >
+            ROOM: {currentRoomId}
+          </button>
         </div>
 
         <div className="flex items-center space-x-2">

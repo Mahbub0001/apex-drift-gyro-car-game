@@ -122,9 +122,10 @@ export const GameView: React.FC<GameViewProps> = ({
     setControllerUrl(url);
 
     QRCode.toDataURL(url, {
-      width: 240,
-      margin: 2,
-      color: { dark: '#00F2FE', light: '#08090C' }
+      width: 320,
+      margin: 3,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' }
     }).then(setQrDataUrl);
   }, [roomId, lanIp]);
 
@@ -396,14 +397,22 @@ export const GameView: React.FC<GameViewProps> = ({
               Scan with your phone's camera (same Wi-Fi) to turn your phone into a physical tilt steering wheel!
             </p>
 
-            <div className="bg-[#08090C] p-3 rounded-xl border border-cyan-500/25 flex flex-col items-center justify-center mb-3">
+            <div className="bg-white p-3.5 rounded-2xl shadow-xl shadow-cyan-500/10 flex flex-col items-center justify-center mb-3">
               {qrDataUrl ? (
-                <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded shadow-lg shadow-cyan-500/10" />
+                <img src={qrDataUrl} alt="QR Code" className="w-52 h-52 rounded-lg select-none block" />
               ) : (
-                <div className="w-48 h-48 flex items-center justify-center text-cyan-400/50 text-xs font-mono">
-                  Generating QR...
+                <div className="w-52 h-52 flex items-center justify-center text-gray-500 text-xs font-mono">
+                  Generating High-Contrast QR...
                 </div>
               )}
+            </div>
+
+            {/* Room Code Badge */}
+            <div className="flex items-center justify-between bg-cyan-950/50 border border-cyan-500/40 p-2.5 rounded-xl mb-3">
+              <span className="text-xs text-cyan-200 font-bold uppercase tracking-wider">PAIRING CODE:</span>
+              <span className="font-mono font-extrabold text-lg text-cyan-300 tracking-widest bg-black/80 px-3 py-0.5 rounded border border-cyan-500/50">
+                {roomId}
+              </span>
             </div>
 
             {/* Connection Link & Copy */}
