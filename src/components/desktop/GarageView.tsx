@@ -7,13 +7,15 @@ interface GarageViewProps {
   selectedCar: SuperCarConfig;
   onOpenGyroModal: () => void;
   isPhoneConnected: boolean;
+  onBackToHome?: () => void;
 }
 
 export const GarageView: React.FC<GarageViewProps> = ({
   onSelectCar,
   selectedCar,
   onOpenGyroModal,
-  isPhoneConnected
+  isPhoneConnected,
+  onBackToHome
 }) => {
   const [activeCar, setActiveCar] = useState<SuperCarConfig>(selectedCar);
 
@@ -36,18 +38,28 @@ export const GarageView: React.FC<GarageViewProps> = ({
 
       {/* Top Header */}
       <div className="relative z-10 flex items-center justify-between glass-panel px-6 py-4 rounded-2xl border border-white/10 backdrop-blur-md">
-        <div>
-          <div className="flex items-center space-x-3">
-            <h1 className="text-3xl font-display font-extrabold tracking-wider bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-              APEX DRIFT SHOWROOM
-            </h1>
-            <span className="text-[11px] px-3 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 uppercase tracking-widest">
-              HYPERCAR FLEET
-            </span>
+        <div className="flex items-center space-x-4">
+          {onBackToHome && (
+            <button
+              onClick={onBackToHome}
+              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white border border-white/10 flex items-center gap-1.5 text-xs font-bold font-mono transition-all"
+            >
+              ← MENU
+            </button>
+          )}
+          <div>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-3xl font-display font-extrabold tracking-wider bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
+                APEX DRIFT SHOWROOM
+              </h1>
+              <span className="text-[11px] px-3 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 uppercase tracking-widest">
+                HYPERCAR FLEET
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Choose your competition track weapon • Steer with Keyboard (A/D or Arrows) or Smartphone Gyroscope
+            </p>
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Choose your competition track weapon • Steer with Keyboard (A/D or Arrows) or Smartphone Gyroscope
-          </p>
         </div>
 
         {/* Gyro Remote Status & QR Trigger */}

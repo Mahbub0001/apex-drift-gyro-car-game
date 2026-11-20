@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { DesktopHost } from './components/desktop/DesktopHost';
+import React, { useState, useEffect, useRef } from 'react';
+import { HomeView } from './components/desktop/HomeView';
 import { MobileController } from './components/controller/MobileController';
 import { GameView } from './components/desktop/GameView';
 import { GarageView } from './components/desktop/GarageView';
+import { WebRTCHost } from './services/webrtc';
 import { SUPER_CARS, SuperCarConfig } from './types';
 
 export const App: React.FC = () => {
@@ -16,7 +17,7 @@ export const App: React.FC = () => {
     return 'desktop';
   });
 
-  const [gameState, setGameState] = useState<'garage' | 'racing'>('racing');
+  const [gameState, setGameState] = useState<'home' | 'garage' | 'racing'>('home');
   const [selectedCar, setSelectedCar] = useState<SuperCarConfig>(SUPER_CARS[0]); // Default to RAPTOR
 
   const [roomId, setRoomId] = useState<string>(() => {
@@ -30,6 +31,7 @@ export const App: React.FC = () => {
   });
 
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
+  const hostRef = useRef<WebRTCHost | null>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -39,8 +41,44 @@ export const App: React.FC = () => {
     }
   }, [roomId]);
 
+  // Persistent WebRTC Host: Starts listening on App load so phone pairing works on Home, Garage or Racing
+  useEffect(() => {
+    if (mode === 'controller') return;
+
+    const host = new WebRTCHost(roomId);
+    hostRef.current = host;
+
+    host.init(
+      (_input) => {
+        // Connected phone sends gyro data
+      },
+      (connected) => {
+        setIsPhoneConnected(connected);
+      }
+    );
+
+    return () => {
+      host.destroy();
+      hostRef.current = null;
+    };
+  }, [mode, roomId]);
+
   if (mode === 'controller') {
     return <MobileController roomId={roomId} />;
+  }
+
+  if (gameState === 'home') {
+    return (
+      <HomeView
+        selectedCar={selectedCar}
+        onStartRacing={() => setGameState('racing')}
+        onOpenGarage={() => setGameState('garage')}
+        onSelectCar={(car) => setSelectedCar(car)}
+        roomId={roomId}
+        isPhoneConnected={isPhoneConnected}
+        onOpenMultiplayer={() => setGameState('racing')}
+      />
+    );
   }
 
   if (gameState === 'garage') {
@@ -51,8 +89,9 @@ export const App: React.FC = () => {
           setSelectedCar(car);
           setGameState('racing');
         }}
-        onOpenGyroModal={() => setGameState('racing')}
+        onOpenGyroModal={() => setGameState('home')}
         isPhoneConnected={isPhoneConnected}
+        onBackToHome={() => setGameState('home')}
       />
     );
   }
@@ -62,7 +101,9 @@ export const App: React.FC = () => {
       roomId={roomId}
       selectedCar={selectedCar}
       onOpenGarage={() => setGameState('garage')}
-      onExit={() => setGameState('garage')}
+      onExit={() => setGameState('home')}
+      sharedHost={hostRef.current}
+      isInitialPhoneConnected={isPhoneConnected}
     />
   );
 };

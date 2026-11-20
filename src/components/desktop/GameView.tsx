@@ -14,13 +14,17 @@ interface GameViewProps {
   onExit?: () => void;
   selectedCar?: SuperCarConfig;
   onOpenGarage?: () => void;
+  sharedHost?: WebRTCHost | null;
+  isInitialPhoneConnected?: boolean;
 }
 
 export const GameView: React.FC<GameViewProps> = ({
   roomId,
   onExit,
   selectedCar = SUPER_CARS[0],
-  onOpenGarage
+  onOpenGarage,
+  sharedHost,
+  isInitialPhoneConnected = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -44,7 +48,7 @@ export const GameView: React.FC<GameViewProps> = ({
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
   const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
+  const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(isInitialPhoneConnected);
   const [ping, setPing] = useState<number>(0);
   const [activeInputSource, setActiveInputSource] = useState<'gyro' | 'keyboard'>('keyboard');
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -129,8 +133,29 @@ export const GameView: React.FC<GameViewProps> = ({
     }).then(setQrDataUrl);
   }, [roomId, lanIp]);
 
-  // WebRTC Host Listener
+  // WebRTC Host Listener (Uses shared host from App level if present, or creates fallback)
   useEffect(() => {
+    if (sharedHost) {
+      hostRef.current = sharedHost;
+      sharedHost.setInputCallback((incomingInput) => {
+        soundRef.current?.init();
+        inputRef.current = incomingInput;
+        setActiveInputSource('gyro');
+      });
+      sharedHost.setConnectionChangeCallback((connected) => {
+        setIsPhoneConnected(connected);
+      });
+      setIsPhoneConnected(sharedHost.isConnected);
+
+      const pingTimer = setInterval(() => {
+        setPing(sharedHost.pingMs);
+      }, 500);
+
+      return () => {
+        clearInterval(pingTimer);
+      };
+    }
+
     const host = new WebRTCHost(roomId);
     hostRef.current = host;
 
@@ -153,7 +178,7 @@ export const GameView: React.FC<GameViewProps> = ({
       clearInterval(pingTimer);
       host.destroy();
     };
-  }, [roomId]);
+  }, [roomId, sharedHost]);
 
   // Multiplayer Room Connection
   const startMultiplayer = (asHost: boolean) => {
@@ -346,6 +371,16 @@ export const GameView: React.FC<GameViewProps> = ({
 
       {/* Floating Header Actions (Top Left) */}
       <div className="absolute top-4 left-4 z-40 flex items-center space-x-2">
+        {onExit && (
+          <button
+            onClick={onExit}
+            className="flex items-center space-x-1.5 glass-panel px-3 py-2 rounded-xl border border-white/10 text-xs font-bold font-racing uppercase tracking-wider text-gray-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all pointer-events-auto shadow-lg"
+            title="Return to Main Menu"
+          >
+            <span>← Menu</span>
+          </button>
+        )}
+
         <button
           onClick={() => setIsQrModalOpen(true)}
           className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-cyan-500/30 text-xs font-bold font-racing uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"

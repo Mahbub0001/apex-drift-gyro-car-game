@@ -16,6 +16,14 @@ export class WebRTCHost {
     this.roomId = roomId;
   }
 
+  public setInputCallback(cb: (input: ControllerInput) => void) {
+    this.onInputCallback = cb;
+  }
+
+  public setConnectionChangeCallback(cb: (connected: boolean) => void) {
+    this.onConnectionChangeCallback = cb;
+  }
+
   public init(
     onInput: (input: ControllerInput) => void,
     onConnectionChange: (connected: boolean) => void
@@ -155,8 +163,23 @@ export class WebRTCController {
       this.setupConnection();
     });
 
-    this.peer.on('error', (err) => {
+    this.peer.on('error', (err: any) => {
       console.warn('[WebRTC Controller] Peer error:', err);
+      if (!this.isConnected && this.peer && !this.peer.destroyed) {
+        setTimeout(() => {
+          if (!this.isConnected && this.peer && !this.peer.destroyed) {
+            const hostPeerId = `apex-host-${this.roomId}`;
+            console.log('[WebRTC Controller] Retrying connect to host:', hostPeerId);
+            try {
+              const conn = this.peer.connect(hostPeerId, { reliable: false });
+              this.connection = conn;
+              this.setupConnection();
+            } catch (e) {
+              console.warn('[WebRTC Controller] Retry connection failed:', e);
+            }
+          }
+        }, 2000);
+      }
     });
   }
 
