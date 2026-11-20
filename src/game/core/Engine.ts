@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createSportsCar, CarMeshes } from '../models/CarModel';
 import { VehiclePhysics } from '../physics/VehicleController';
+import { HighwayTrack } from '../environment/Track';
 import { ControllerInput, VehicleTelemetry } from '../../types';
 
 export class GameEngine {
@@ -9,10 +10,10 @@ export class GameEngine {
   public renderer: THREE.WebGLRenderer;
   public vehiclePhysics: VehiclePhysics;
   public carMeshes: CarMeshes;
+  public track: HighwayTrack;
 
   private canvas: HTMLCanvasElement;
   private cameraMode: 'chase' | 'hood' | 'cinematic' = 'chase';
-  private cameraOffset: THREE.Vector3 = new THREE.Vector3(0, 2.4, -5.8);
   private cameraTarget: THREE.Vector3 = new THREE.Vector3();
   private baseFov: number = 62;
   private currentRoll: number = 0;
@@ -28,9 +29,9 @@ export class GameEngine {
     // 1. Scene & Renderer Setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0c12);
-    this.scene.fog = new THREE.FogExp2(0x0a0c12, 0.0035);
+    this.scene.fog = new THREE.FogExp2(0x0a0c12, 0.0028);
 
-    this.camera = new THREE.PerspectiveCamera(this.baseFov, width / height, 0.2, 800);
+    this.camera = new THREE.PerspectiveCamera(this.baseFov, width / height, 0.2, 1200);
     this.camera.position.set(0, 3, -7);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -45,12 +46,15 @@ export class GameEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // 2. Physics & Car Mesh
-    this.vehiclePhysics = new VehiclePhysics();
+    // 2. Build Highway Track & Autumn Environment
+    this.track = new HighwayTrack(this.scene);
+
+    // 3. Physics & Car Mesh
+    this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.4, 10));
     this.carMeshes = createSportsCar(0x00f2fe);
     this.scene.add(this.carMeshes.root);
 
-    // 3. Lighting Rig
+    // 4. Lighting Rig
     this.setupLighting();
   }
 
@@ -61,35 +65,46 @@ export class GameEngine {
 
     // Golden Hour Directional Sun
     const sun = new THREE.DirectionalLight(0xffeedd, 3.2);
-    sun.position.set(30, 60, 40);
+    sun.position.set(60, 90, 80);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;
     sun.shadow.mapSize.height = 2048;
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 250;
-    const d = 35;
+    sun.shadow.camera.far = 400;
+    const d = 50;
     sun.shadow.camera.left = -d;
     sun.shadow.camera.right = d;
     sun.shadow.camera.top = d;
     sun.shadow.camera.bottom = -d;
     this.scene.add(sun);
 
-    // Rim Lighting for metallic edge reflections
+    // Purple Rim Lighting
     const rimLight = new THREE.DirectionalLight(0x8a2be2, 2.0);
-    rimLight.position.set(-25, 15, -30);
+    rimLight.position.set(-45, 25, -50);
     this.scene.add(rimLight);
   }
 
-  public update(delta: number, input: ControllerInput, roadElevationFunc?: (x: number, z: number) => number): VehicleTelemetry {
+  public update(delta: number, input: ControllerInput): VehicleTelemetry {
     // 1. Toggle Camera View ('C' key or button)
     if (input.cameraSwitch) {
       this.cameraMode = this.cameraMode === 'chase' ? 'hood' : 'chase';
     }
 
-    // 2. Update Vehicle Physics
+    // 2. Check for Jump Ramp Trigger
+    for (const ramp of this.track.ramps) {
+      const dist = this.vehiclePhysics.position.distanceTo(ramp.position);
+      if (dist < 5.0 && this.vehiclePhysics.speedKmh > 50 && !this.vehiclePhysics.isAirborne) {
+        // Launch into air!
+        const upwardImpulse = Math.min(22, 12 + (this.vehiclePhysics.speedKmh / 200) * 8);
+        this.vehiclePhysics.launchRamp(upwardImpulse);
+      }
+    }
+
+    // 3. Update Vehicle Physics with Highway Elevation
+    const roadElevationFunc = (x: number, z: number) => this.track.getElevationAt(x, z);
     const telemetry = this.vehiclePhysics.update(delta, input, roadElevationFunc);
 
-    // 3. Sync 3D Car Mesh with Physics
+    // 4. Sync 3D Car Mesh with Physics
     const { root, wheels, bodyMaterial, taillightBar } = this.carMeshes;
     root.position.copy(this.vehiclePhysics.position);
     root.quaternion.copy(this.vehiclePhysics.quaternion);
@@ -99,11 +114,9 @@ export class GameEngine {
     const wheelSpinRate = (forwardSpeed * delta) / 0.35;
 
     wheels.forEach((wheel, idx) => {
-      // Spin on X-axis (local)
       wheel.children[0].rotation.x += wheelSpinRate;
       wheel.children[1].rotation.x += wheelSpinRate;
 
-      // Front wheels turn with steering input
       if (idx === 0 || idx === 1) {
         wheel.rotation.y = -input.steer * 0.45;
       }
@@ -120,10 +133,10 @@ export class GameEngine {
     const isBraking = input.brake > 0.05;
     (taillightBar.material as THREE.MeshBasicMaterial).color.setHex(isBraking ? 0xff0022 : 0x880011);
 
-    // 4. Asphalt 9-Style Dynamic Camera Choreography
+    // 5. Asphalt 9-Style Dynamic Camera Choreography
     this.updateCamera(delta, telemetry, input);
 
-    // 5. Render Scene
+    // 6. Render Scene
     this.renderer.render(this.scene, this.camera);
 
     return telemetry;
@@ -145,9 +158,9 @@ export class GameEngine {
 
       // Low-Angle Dutch Tilt 3/4 side view tracking the car in the air
       const jumpCamOffset = new THREE.Vector3(
-        carPos.x + Math.sin(carRot.y + 0.8) * 4.8,
-        carPos.y - 0.4, // Low angle looking up
-        carPos.z + Math.cos(carRot.y + 0.8) * 4.8
+        carPos.x + Math.sin(carRot.y + 0.8) * 5.2,
+        carPos.y - 0.5,
+        carPos.z + Math.cos(carRot.y + 0.8) * 5.2
       );
 
       this.camera.position.lerp(jumpCamOffset, Math.min(1, delta * 8));
@@ -165,7 +178,6 @@ export class GameEngine {
     this.currentRoll += (0 - this.currentRoll) * Math.min(1, delta * 10);
 
     if (this.cameraMode === 'hood') {
-      // Hood / Bumper View
       const hoodPos = new THREE.Vector3(
         carPos.x + Math.sin(carRot.y) * 1.4,
         carPos.y + 0.65,
@@ -181,22 +193,19 @@ export class GameEngine {
       this.camera.lookAt(lookAhead);
     } else {
       // Chase Cam (Default)
-      // Slight lateral offset when drifting to show counter-steer angle
       const driftOffset = telemetry.isDrifting ? -input.steer * 0.8 : 0;
 
       const idealOffset = new THREE.Vector3(
-        carPos.x - Math.sin(carRot.y) * 5.8 + Math.cos(carRot.y) * driftOffset,
-        carPos.y + 2.2,
-        carPos.z - Math.cos(carRot.y) * 5.8 - Math.sin(carRot.y) * driftOffset
+        carPos.x - Math.sin(carRot.y) * 6.2 + Math.cos(carRot.y) * driftOffset,
+        carPos.y + 2.4,
+        carPos.z - Math.cos(carRot.y) * 6.2 - Math.sin(carRot.y) * driftOffset
       );
 
-      // Spring-damper smooth interpolation
       this.camera.position.lerp(idealOffset, Math.min(1, delta * 12));
 
-      // Look at point ahead of the car hood
       const targetLookAt = new THREE.Vector3(
         carPos.x + Math.sin(carRot.y) * 5.0,
-        carPos.y + 0.8,
+        carPos.y + 0.9,
         carPos.z + Math.cos(carRot.y) * 5.0
       );
       this.cameraTarget.lerp(targetLookAt, Math.min(1, delta * 15));
