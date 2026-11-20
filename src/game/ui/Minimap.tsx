@@ -32,34 +32,48 @@ export const Minimap: React.FC<MinimapProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // Coordinate mapping parameters (Track spans X: -100 to +100, Z: 0 to 1200)
-    const mapMinX = -120;
-    const mapMaxX = 120;
-    const mapMinZ = -20;
-    const mapMaxZ = 1250;
+    // Compute dynamic bounds of the closed-loop circuit
+    const points = splineCurve.getPoints(100);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+
+    points.forEach((pt) => {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.z < minZ) minZ = pt.z;
+      if (pt.z > maxZ) maxZ = pt.z;
+    });
+
+    const padX = (maxX - minX) * 0.12;
+    const padZ = (maxZ - minZ) * 0.12;
+    const mapMinX = minX - padX;
+    const mapMaxX = maxX + padX;
+    const mapMinZ = minZ - padZ;
+    const mapMaxZ = maxZ + padZ;
 
     const worldToMap = (x: number, z: number): [number, number] => {
       const normX = (x - mapMinX) / (mapMaxX - mapMinX);
       const normZ = (z - mapMinZ) / (mapMaxZ - mapMinZ);
-      // Map X to canvas width with padding, Z to height (inverted: top is finish)
-      const mapX = 20 + normX * (width - 40);
-      const mapY = height - 20 - normZ * (height - 40);
+      const mapX = 14 + normX * (width - 28);
+      const mapY = height - 14 - normZ * (height - 28);
       return [mapX, mapY];
     };
 
-    // 1. Draw Track Spline Path
+    // 1. Draw Track Spline Closed Path
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const points = splineCurve.getPoints(80);
     points.forEach((pt, i) => {
       const [mx, my] = worldToMap(pt.x, pt.z);
       if (i === 0) ctx.moveTo(mx, my);
       else ctx.lineTo(mx, my);
     });
+    ctx.closePath();
     ctx.stroke();
 
     // Inner Glowing Line
@@ -71,7 +85,15 @@ export const Minimap: React.FC<MinimapProps> = ({
       if (i === 0) ctx.moveTo(mx, my);
       else ctx.lineTo(mx, my);
     });
+    ctx.closePath();
     ctx.stroke();
+
+    // Start/Finish Line Indicator
+    const [startMx, startMy] = worldToMap(points[0].x, points[0].z);
+    ctx.beginPath();
+    ctx.arc(startMx, startMy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
 
     // 2. Draw Civilian Traffic Blips
     traffic.forEach((car) => {
@@ -115,8 +137,21 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.restore();
   }, [playerPos, playerHeading, splineCurve, traffic, opponents]);
 
-  // Track progress percentage
-  const progressPercent = Math.min(100, Math.max(0, Math.round((playerPos.z / 1200) * 100)));
+  // Track progress percentage based on closest spline position
+  const sampled = splineCurve.getPoints(100);
+  let closestT = 0;
+  let minDSq = Infinity;
+  for (let i = 0; i < sampled.length; i++) {
+    const pt = sampled[i];
+    const dx = playerPos.x - pt.x;
+    const dz = playerPos.z - pt.z;
+    const dSq = dx * dx + dz * dz;
+    if (dSq < minDSq) {
+      minDSq = dSq;
+      closestT = i / sampled.length;
+    }
+  }
+  const progressPercent = Math.min(100, Math.max(0, Math.round(closestT * 100)));
 
   return (
     <div className="glass-panel p-3 rounded-2xl border border-cyan-500/30 flex flex-col items-center shadow-xl shadow-black/60 pointer-events-auto">

@@ -87,6 +87,7 @@ export class GameEngine {
       (texture) => {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         this.scene.environment = texture;
+        this.scene.background = texture; // Real photorealistic 360-degree HDR sky!
       },
       undefined,
       (err) => console.warn('[Engine] HDR warning:', err)
@@ -237,6 +238,17 @@ export class GameEngine {
     if (this.vehiclePhysics.hadBarrierCollision) {
       this.triggerNfsImpact(-Math.sign(input.steer || 1), 0, 0.45);
       this.onCrashCallback?.(0.4);
+    }
+
+    // Dynamic directional light following player car for continuous shadow casting
+    if (this.track && this.track.dirLight) {
+      this.track.dirLight.position.set(
+        this.vehiclePhysics.position.x + 80,
+        this.vehiclePhysics.position.y + 120,
+        this.vehiclePhysics.position.z + 60
+      );
+      this.track.dirLight.target.position.copy(this.vehiclePhysics.position);
+      this.track.dirLight.target.updateMatrixWorld();
     }
 
     // 4. Update Dynamic Civilian Traffic AI with Solid Physical Impact

@@ -183,7 +183,7 @@ export class VehiclePhysics {
     // 7. Track Boundary & Armco Guardrail Collision (Keeps car safely on asphalt)
     if (closestPointFunc) {
       const { point, dist } = closestPointFunc(this.position.x, this.position.z);
-      const roadHalfWidth = 5.5; // Road is 12m wide, guardrails at +/-5.5m
+      const roadHalfWidth = 6.4; // Road is 12m wide, guardrails at +/-6.8m
 
       if (dist > roadHalfWidth) {
         // Compute pushback direction vector towards track centerline
