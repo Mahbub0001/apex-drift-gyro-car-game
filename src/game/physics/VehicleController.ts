@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ControllerInput, VehicleTelemetry } from '../../types';
 
 export class VehiclePhysics {
-  public position: THREE.Vector3 = new THREE.Vector3(0, 0.4, 0);
+  public position: THREE.Vector3 = new THREE.Vector3(0, 0.42, 10);
   public velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   public rotation: THREE.Euler = new THREE.Euler(0, 0, 0, 'YXZ');
   public quaternion: THREE.Quaternion = new THREE.Quaternion();
@@ -120,15 +120,15 @@ export class VehiclePhysics {
     this.driftAngle = this.isDrifting ? Math.abs(Math.round(THREE.MathUtils.radToDeg(this.currentSteerAngle))) : 0;
 
     // 5. Vertical Dynamics & Asphalt 9 Jump Ramps
-    const targetSuspensionY = this.groundHeight + 0.38;
-    const isAboveGround = this.position.y > targetSuspensionY + 0.08;
+    const targetSuspensionY = this.groundHeight + 0.42;
+    const isAboveGround = this.position.y > targetSuspensionY + 0.05;
 
     if (isAboveGround) {
       this.isAirborne = true;
-      this.verticalVelocity -= 22.0 * delta; // Gravity
+      this.verticalVelocity -= 24.0 * delta; // Gravity
       this.position.y += this.verticalVelocity * delta;
 
-      if (this.verticalVelocity > 6.0 || this.jumpAirTimer > 0) {
+      if (this.jumpAirTimer > 0) {
         this.isJumping = true;
         this.jumpAirTimer += delta;
       }
@@ -145,8 +145,7 @@ export class VehiclePhysics {
       this.isAirborne = false;
       this.isJumping = false;
       this.jumpAirTimer = 0;
-      // Smooth suspension snap
-      this.position.y += (targetSuspensionY - this.position.y) * Math.min(1, delta * 15);
+      this.position.y = targetSuspensionY;
       this.verticalVelocity = 0;
     }
 
@@ -192,6 +191,7 @@ export class VehiclePhysics {
     this.verticalVelocity = upwardImpulse;
     this.isAirborne = true;
     this.isJumping = true;
+    this.jumpAirTimer = 0.01;
   }
 
   private calculateGearAndRpm() {

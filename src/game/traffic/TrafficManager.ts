@@ -168,6 +168,7 @@ export class TrafficManager {
 
       // Apply lane offset
       const worldPos = curvePoint.clone().add(binormal.multiplyScalar(car.laneOffset));
+      worldPos.y = curvePoint.y + 0.35;
       car.mesh.position.copy(worldPos);
 
       // Align with curve tangent
