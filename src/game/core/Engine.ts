@@ -3,7 +3,15 @@ import { createSportsCar, CarMeshes } from '../models/CarModel';
 import { VehiclePhysics } from '../physics/VehicleController';
 import { HighwayTrack } from '../environment/Track';
 import { TrafficManager } from '../traffic/TrafficManager';
-import { ControllerInput, VehicleTelemetry, TrafficCarState } from '../../types';
+import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState } from '../../types';
+
+interface OpponentCarEntity {
+  id: string;
+  meshes: CarMeshes;
+  targetPos: THREE.Vector3;
+  targetQuat: THREE.Quaternion;
+  currentSpeed: number;
+}
 
 export class GameEngine {
   public scene: THREE.Scene;
@@ -18,13 +26,15 @@ export class GameEngine {
   public nearMissActive: boolean = false;
   private nearMissTimer: number = 0;
 
+  // Remote Multiplayer Cars
+  private opponentCars: Map<string, OpponentCarEntity> = new Map();
+
   private canvas: HTMLCanvasElement;
   private cameraMode: 'chase' | 'hood' | 'cinematic' = 'chase';
   private cameraTarget: THREE.Vector3 = new THREE.Vector3();
   private baseFov: number = 62;
   private currentRoll: number = 0;
 
-  // Jump camera parameters
   public isLetterboxed: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -58,7 +68,7 @@ export class GameEngine {
     // 3. Traffic Obstacles AI Manager
     this.trafficManager = new TrafficManager(this.scene, this.track.splineCurve);
 
-    // 4. Physics & Car Mesh
+    // 4. Local Player Car
     this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.4, 10));
     this.carMeshes = createSportsCar(0x00f2fe);
     this.scene.add(this.carMeshes.root);
@@ -90,6 +100,41 @@ export class GameEngine {
     this.scene.add(rimLight);
   }
 
+  // Update or Spawn Remote Opponents in the 3D world
+  public syncOpponents(opponents: RemotePlayerState[]) {
+    opponents.forEach((opp) => {
+      let carEntity = this.opponentCars.get(opp.id);
+      if (!carEntity) {
+        // Spawn 3D opponent car
+        const colorHex = parseInt((opp.color || '#a855f7').replace('#', '0x'), 16);
+        const meshes = createSportsCar(colorHex);
+        this.scene.add(meshes.root);
+
+        carEntity = {
+          id: opp.id,
+          meshes,
+          targetPos: new THREE.Vector3(...opp.position),
+          targetQuat: new THREE.Quaternion(...opp.rotation),
+          currentSpeed: opp.speedKmh
+        };
+        this.opponentCars.set(opp.id, carEntity);
+      } else {
+        carEntity.targetPos.set(...opp.position);
+        carEntity.targetQuat.set(...opp.rotation);
+        carEntity.currentSpeed = opp.speedKmh;
+      }
+    });
+
+    // Clean up disconnected players
+    const currentIds = new Set(opponents.map((o) => o.id));
+    this.opponentCars.forEach((car, id) => {
+      if (!currentIds.has(id)) {
+        this.scene.remove(car.meshes.root);
+        this.opponentCars.delete(id);
+      }
+    });
+  }
+
   public update(delta: number, input: ControllerInput): VehicleTelemetry {
     // 1. Toggle Camera View ('C' key or button)
     if (input.cameraSwitch) {
@@ -113,13 +158,11 @@ export class GameEngine {
     this.trafficStates = this.trafficManager.update(
       delta,
       this.vehiclePhysics.position,
-      (damage) => {
-        // Collision: Speed penalty & chassis bounce
+      () => {
         this.vehiclePhysics.velocity.z *= 0.65;
         this.vehiclePhysics.position.x += (Math.random() - 0.5) * 0.8;
       },
       () => {
-        // Near Miss Bonus!
         this.nearMissActive = true;
         this.nearMissTimer = 1.2;
         this.vehiclePhysics.nitroFuel = Math.min(100, this.vehiclePhysics.nitroFuel + 35);
@@ -133,12 +176,23 @@ export class GameEngine {
       }
     }
 
-    // 5. Sync 3D Car Mesh with Physics
+    // 5. Interpolate Remote Opponent Cars
+    this.opponentCars.forEach((opp) => {
+      opp.meshes.root.position.lerp(opp.targetPos, Math.min(1, delta * 15));
+      opp.meshes.root.quaternion.slerp(opp.targetQuat, Math.min(1, delta * 15));
+
+      // Spin opponent wheels
+      const spin = (opp.currentSpeed * delta) / 0.35;
+      opp.meshes.wheels.forEach((w) => {
+        w.children[0].rotation.x += spin;
+      });
+    });
+
+    // 6. Sync Local 3D Car Mesh with Physics
     const { root, wheels, bodyMaterial, taillightBar } = this.carMeshes;
     root.position.copy(this.vehiclePhysics.position);
     root.quaternion.copy(this.vehiclePhysics.quaternion);
 
-    // Animate Wheels (Spin + Steer)
     const forwardSpeed = this.vehiclePhysics.velocity.z;
     const wheelSpinRate = (forwardSpeed * delta) / 0.35;
 
@@ -151,21 +205,19 @@ export class GameEngine {
       }
     });
 
-    // Nitro Visual Shift
     if (input.nitro && telemetry.nitroFuel > 0 && input.throttle > 0.1) {
       bodyMaterial.color.setHex(0x8a2be2);
     } else {
       bodyMaterial.color.setHex(0x00f2fe);
     }
 
-    // Brake Lights Glow
     const isBraking = input.brake > 0.05;
     (taillightBar.material as THREE.MeshBasicMaterial).color.setHex(isBraking ? 0xff0022 : 0x880011);
 
-    // 6. Asphalt 9-Style Dynamic Camera Choreography
+    // 7. Asphalt 9-Style Dynamic Camera Choreography
     this.updateCamera(delta, telemetry, input);
 
-    // 7. Render Scene
+    // 8. Render Scene
     this.renderer.render(this.scene, this.camera);
 
     return telemetry;

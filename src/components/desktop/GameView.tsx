@@ -3,26 +3,34 @@ import * as THREE from 'three';
 import { GameEngine } from '../../game/core/Engine';
 import { HUDOverlay } from '../../game/ui/HUDOverlay';
 import { WebRTCHost } from '../../services/webrtc';
+import { MultiplayerRoomManager } from '../../services/multiplayer';
 import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState } from '../../types';
 import QRCode from 'qrcode';
-import { QrCode, X } from 'lucide-react';
+import { QrCode, X, Users, Globe, Play } from 'lucide-react';
 
 interface GameViewProps {
   roomId: string;
   onExit?: () => void;
-  opponents?: RemotePlayerState[];
 }
 
-export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = [] }) => {
+export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const hostRef = useRef<WebRTCHost | null>(null);
+  const mpManagerRef = useRef<MultiplayerRoomManager | null>(null);
 
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
+  const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
   const [ping, setPing] = useState<number>(0);
   const [activeInputSource, setActiveInputSource] = useState<'gyro' | 'keyboard'>('keyboard');
+
+  // Multiplayer Room State
+  const [mpRoomCode, setMpRoomCode] = useState<string>(roomId);
+  const [isMpHost, setIsMpHost] = useState<boolean>(true);
+  const [isMpConnected, setIsMpConnected] = useState<boolean>(false);
+  const [opponents, setOpponents] = useState<RemotePlayerState[]>([]);
 
   const [inputState, setInputState] = useState<ControllerInput>({
     steer: 0,
@@ -89,6 +97,33 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = 
     };
   }, [roomId]);
 
+  // Connect to Multiplayer Room
+  const startMultiplayer = (asHost: boolean) => {
+    setIsMpHost(asHost);
+    const mp = new MultiplayerRoomManager(mpRoomCode);
+    mpManagerRef.current = mp;
+
+    mp.init(asHost, {
+      onPlayerJoined: (player) => {
+        setOpponents(mp.getOpponentsList());
+      },
+      onPlayerLeft: () => {
+        setOpponents(mp.getOpponentsList());
+      },
+      onPlayerUpdate: () => {
+        const list = mp.getOpponentsList();
+        setOpponents(list);
+        engineRef.current?.syncOpponents(list);
+      },
+      onRoomReady: () => {
+        setIsMpConnected(true);
+      }
+    });
+
+    setIsMpConnected(true);
+    setIsMpModalOpen(false);
+  };
+
   // Keyboard Listeners
   useEffect(() => {
     const keys: Record<string, boolean> = {};
@@ -152,6 +187,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = 
 
     let lastTime = performance.now();
     let animationFrameId: number;
+    let mpBroadcastTimer = 0;
 
     const gameLoop = (currentTime: number) => {
       animationFrameId = requestAnimationFrame(gameLoop);
@@ -176,6 +212,21 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = 
         gear: currentTelemetry.gear,
         rpm: currentTelemetry.rpm
       });
+
+      // Broadcast position to Multiplayer opponents at 20 Hz
+      mpBroadcastTimer += delta;
+      if (mpBroadcastTimer >= 0.05 && mpManagerRef.current) {
+        mpBroadcastTimer = 0;
+        const pos = engine.vehiclePhysics.position;
+        const quat = engine.vehiclePhysics.quaternion;
+        mpManagerRef.current.broadcastLocalState({
+          position: [pos.x, pos.y, pos.z],
+          rotation: [quat.x, quat.y, quat.z, quat.w],
+          speedKmh: currentTelemetry.speedKmh,
+          isDrifting: currentTelemetry.isDrifting,
+          isNitro: inputState.nitro
+        });
+      }
     };
 
     animationFrameId = requestAnimationFrame(gameLoop);
@@ -187,6 +238,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = 
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       engine.dispose();
+      mpManagerRef.current?.destroy();
     };
   }, [inputState]);
 
@@ -212,14 +264,22 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = 
         />
       )}
 
-      {/* Floating Gyro Connect Button (Top Left) */}
-      <div className="absolute top-4 left-4 z-40">
+      {/* Floating Header Actions (Top Left) */}
+      <div className="absolute top-4 left-4 z-40 flex items-center space-x-2">
         <button
           onClick={() => setIsQrModalOpen(true)}
           className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-cyan-500/30 text-xs font-bold font-racing uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all pointer-events-auto"
         >
           <QrCode className="w-4 h-4 text-cyan-400" />
-          <span>{isPhoneConnected ? 'Gyro Connected' : 'Connect Phone Gyro'}</span>
+          <span>{isPhoneConnected ? 'Gyro Connected' : 'Phone Gyro'}</span>
+        </button>
+
+        <button
+          onClick={() => setIsMpModalOpen(true)}
+          className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-purple-500/30 text-xs font-bold font-racing uppercase tracking-wider text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all pointer-events-auto"
+        >
+          <Users className="w-4 h-4 text-purple-400" />
+          <span>{isMpConnected ? `Room: ${mpRoomCode} (${opponents.length + 1})` : 'Multiplayer'}</span>
         </button>
       </div>
 
@@ -256,6 +316,60 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = 
             >
               RESUME RACING
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Lobby Modal */}
+      {isMpModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="glass-panel p-6 rounded-2xl border border-purple-500/40 max-w-md w-full text-white font-racing relative shadow-2xl shadow-purple-950/50">
+            <button
+              onClick={() => setIsMpModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center space-x-2 mb-2">
+              <Globe className="w-5 h-5 text-purple-400" />
+              <h3 className="text-xl font-display font-bold text-white uppercase">
+                Multiplayer Racing Lobby
+              </h3>
+            </div>
+            <p className="text-xs text-gray-400 mb-5">
+              Race in real-time against friends on the scenic autumn highway. Opponent positions are mirrored live on the vector minimap.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
+                  Room Code (6 Digits)
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={mpRoomCode}
+                  onChange={(e) => setMpRoomCode(e.target.value.toUpperCase())}
+                  className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2.5 text-lg font-display font-bold text-cyan-300 tracking-wider text-center focus:outline-none focus:border-cyan-400 uppercase"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => startMultiplayer(true)}
+                  className="py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-lg shadow-cyan-500/25"
+                >
+                  Host Room
+                </button>
+                <button
+                  onClick={() => startMultiplayer(false)}
+                  className="py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-lg shadow-purple-500/25"
+                >
+                  Join Room
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
