@@ -72,7 +72,7 @@ export const SUPER_CARS: SuperCarConfig[] = [
     bodyColorHex: 0xd90429, // Crimson Red
     accentColorHex: 0x111115,
     topSpeedKmh: 310,
-    accelerationRate: 26.0,
+    accelerationRate: 7.4,
     handlingScore: 9.6,
     driftFactor: 1.6,
     nitroMultiplier: 1.8,
@@ -85,7 +85,7 @@ export const SUPER_CARS: SuperCarConfig[] = [
     bodyColorHex: 0x5a189a, // Midnight Violet
     accentColorHex: 0x00f2fe, // Cyan Accents
     topSpeedKmh: 325,
-    accelerationRate: 27.5,
+    accelerationRate: 7.8,
     handlingScore: 9.3,
     driftFactor: 1.9,
     nitroMultiplier: 2.0,
@@ -98,7 +98,7 @@ export const SUPER_CARS: SuperCarConfig[] = [
     bodyColorHex: 0xff6b00, // Competition Orange
     accentColorHex: 0xffffff, // White Racing Stripe
     topSpeedKmh: 295,
-    accelerationRate: 25.0,
+    accelerationRate: 7.0,
     handlingScore: 9.9,
     driftFactor: 1.5,
     nitroMultiplier: 1.6,
@@ -111,7 +111,7 @@ export const SUPER_CARS: SuperCarConfig[] = [
     bodyColorHex: 0x38b000, // Acid Green
     accentColorHex: 0x111115,
     topSpeedKmh: 305,
-    accelerationRate: 28.0,
+    accelerationRate: 7.6,
     handlingScore: 9.7,
     driftFactor: 1.8,
     nitroMultiplier: 1.7,
@@ -124,7 +124,7 @@ export const SUPER_CARS: SuperCarConfig[] = [
     bodyColorHex: 0xffb703, // Sunburst Yellow
     accentColorHex: 0x1a1a20, // Matte Carbon
     topSpeedKmh: 300,
-    accelerationRate: 29.0,
+    accelerationRate: 7.2,
     handlingScore: 9.1,
     driftFactor: 2.2,
     nitroMultiplier: 1.9,

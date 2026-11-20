@@ -20,14 +20,13 @@ export class VehiclePhysics {
   public jumpAirTimer: number = 0;
   public health: number = 100;
 
-  // Real Supercar Specs (Calibrated for Asphalt 9 / NFS arcade-realism)
+  // Real Supercar Specs (Calibrated for Authentic Gran Turismo / NFS Driving Physics)
   public maxSpeedKmh: number = 295;
-  public maxNitroSpeedKmh: number = 345;
-  public accelerationRate: number = 10.5; // m/s^2 (0-100 km/h in ~2.9s)
-  public brakingRate: number = 22.0;      // Strong progressive disc brakes
-  public naturalFriction: number = 2.8;   // Rolling resistance
-  public aeroDragCoeff: number = 0.00065; // Aerodynamic drag (proportional to v^2)
-  public maxSteerAngleRad: number = THREE.MathUtils.degToRad(30);
+  public maxNitroSpeedKmh: number = 335;
+  public accelerationRate: number = 7.4; // Real supercar launch ~0-100 km/h in 3.4s
+  public brakingRate: number = 20.0;     // Progressive multi-piston carbon ceramic disc brakes
+  public naturalFriction: number = 2.4;  // Rolling road friction
+  public aeroDragCoeff: number = 0.00075;// Real aerodynamic drag proportional to v^2
 
   // Internal Dynamics
   private headingAngle: number = 0;
@@ -35,6 +34,7 @@ export class VehiclePhysics {
   private verticalVelocity: number = 0;
   private groundHeight: number = 0;
   private lateralSlipVelocity: number = 0;
+  private smoothedThrottle: number = 0;
 
   // Collision state
   public hadBarrierCollision: boolean = false;
@@ -60,37 +60,41 @@ export class VehiclePhysics {
 
     if (input.nitro && this.nitroFuel > 0 && input.throttle > 0.05) {
       currentMaxSpeed = this.maxNitroSpeedKmh;
-      nitroThrust = 11.5; // Extra boost m/s^2
-      this.nitroFuel = Math.max(0, this.nitroFuel - delta * 24);
+      nitroThrust = 6.5; // Controlled, powerful turbo boost
+      this.nitroFuel = Math.max(0, this.nitroFuel - delta * 20);
     } else {
       // Passive clean driving refill
-      this.nitroFuel = Math.min(100, this.nitroFuel + delta * 4.5);
+      this.nitroFuel = Math.min(100, this.nitroFuel + delta * 3.5);
     }
 
-    // 3. Longitudinal Dynamics (Progressive throttle, drag & gears)
+    // 3. Realistic Progressive Throttle & Power Delivery (Authentic Car Inertia)
+    // Smooth fly-by-wire throttle response (eliminates instant uncontrollable rocket jump)
+    this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, input.throttle, delta * 5.2);
+
     let forwardSpeed = this.velocity.z;
     const speedRatio = Math.min(1.0, Math.abs(this.speedKmh) / currentMaxSpeed);
 
-    // Gear torque multiplier (Gear 1 has highest launch torque, 6 has high speed cruise)
-    const gearTorque = [1.8, 1.45, 1.2, 1.0, 0.85, 0.72][(typeof this.gear === 'number' ? this.gear : 1) - 1] || 1.0;
+    // Gear torque multiplier (Gear 1 has solid mechanical launch, tapering naturally through gears)
+    const currentGearNum = typeof this.gear === 'number' ? this.gear : 1;
+    const gearTorque = [1.32, 1.12, 0.98, 0.86, 0.74, 0.64][currentGearNum - 1] || 1.0;
 
-    if (input.throttle > 0) {
+    if (this.smoothedThrottle > 0.01) {
       const topSpeedMs = (currentMaxSpeed * 1000) / 3600;
       if (forwardSpeed < topSpeedMs) {
-        // Authentic power delivery: high low-end grunt tapering with speed
-        const engineAccel = input.throttle * this.accelerationRate * gearTorque * (1.0 - speedRatio * 0.45);
+        // Authentic internal combustion torque curve: progressive low-to-mid grunt tapering at high RPM
+        const engineAccel = this.smoothedThrottle * this.accelerationRate * gearTorque * Math.max(0.12, 1.0 - speedRatio * 0.55);
         forwardSpeed += (engineAccel + nitroThrust) * delta;
       }
     } else if (input.brake > 0) {
       if (forwardSpeed > 0.5) {
         forwardSpeed -= input.brake * this.brakingRate * delta;
       } else {
-        // Reverse
-        forwardSpeed -= input.brake * (this.accelerationRate * 0.4) * delta;
-        forwardSpeed = Math.max(-14, forwardSpeed);
+        // Reverse gear
+        forwardSpeed -= input.brake * (this.accelerationRate * 0.45) * delta;
+        forwardSpeed = Math.max(-12, forwardSpeed);
       }
     } else {
-      // Natural rolling resistance and aerodynamic drag (v^2)
+      // Natural engine braking, rolling resistance, and aerodynamic drag (proportional to v^2)
       const dragForce = this.naturalFriction + (forwardSpeed * forwardSpeed * this.aeroDragCoeff);
       if (Math.abs(forwardSpeed) > 0.1) {
         forwardSpeed -= Math.sign(forwardSpeed) * dragForce * delta;
@@ -102,36 +106,48 @@ export class VehiclePhysics {
     this.velocity.z = forwardSpeed;
     this.speedKmh = Math.abs(Math.round((forwardSpeed * 3600) / 1000));
 
-    // 4. Realistic Dynamic Steering & Drift Dynamics
-    const steerSpeedScale = THREE.MathUtils.lerp(1.0, 0.42, Math.min(1.0, this.speedKmh / 220));
-    const targetSteerAngle = -input.steer * this.maxSteerAngleRad;
+    // 4. Realistic Dynamic Steering & Physics-Based Handling
+    // Speed-sensitive steering angle attenuation:
+    // Low speed (0-40 km/h): up to 26 deg for hairpins & tight curves
+    // Medium speed (60-120 km/h): ~16 deg for agile road carving
+    // High speed (180+ km/h): ~8 deg for rock-solid, stable highway driving (prevents twitchy spins)
+    const speedNorm = Math.min(1.0, this.speedKmh / 220);
+    const speedSteerAngleRad = THREE.MathUtils.lerp(
+      THREE.MathUtils.degToRad(26),
+      THREE.MathUtils.degToRad(7.8),
+      speedNorm * speedNorm
+    );
 
-    // Responsive EMA smoothing
-    this.currentSteerAngle += (targetSteerAngle - this.currentSteerAngle) * Math.min(1.0, delta * 14);
+    const targetSteerAngle = -input.steer * speedSteerAngleRad;
+    // Progressive steering build-up with natural self-centering caster return
+    const steerFilterRate = Math.abs(input.steer) > 0.05 ? 6.5 : 10.0;
+    this.currentSteerAngle += (targetSteerAngle - this.currentSteerAngle) * Math.min(1.0, delta * steerFilterRate);
 
     const isEbrake = input.handbrake && this.speedKmh > 30;
     const isHardSteerDrift = Math.abs(input.steer) > 0.75 && this.speedKmh > 85;
 
+    // Authentic bicycle kinematic turning model: omega = (v / L) * tan(delta)
+    const wheelbase = 2.7; // Standard supercar wheelbase (Ferrari 458 / GT3)
     let turnRate = 0;
-    if (Math.abs(forwardSpeed) > 1.0) {
+
+    if (Math.abs(forwardSpeed) > 0.4) {
       const dir = Math.sign(forwardSpeed);
 
       if (isEbrake || isHardSteerDrift) {
         this.isDrifting = true;
-        // Oversteer drift angle
-        turnRate = this.currentSteerAngle * (2.1 * steerSpeedScale) * dir;
-        this.driftScore += Math.round(this.speedKmh * delta * 8);
-
-        // Lateral slip sliding
+        turnRate = this.currentSteerAngle * 2.2 * dir;
+        this.driftScore += Math.round(this.speedKmh * delta * 6);
         this.lateralSlipVelocity = THREE.MathUtils.lerp(
           this.lateralSlipVelocity,
-          -input.steer * (forwardSpeed * 0.35),
-          delta * 4
+          -input.steer * (forwardSpeed * 0.32),
+          delta * 4.0
         );
       } else {
         this.isDrifting = false;
-        turnRate = this.currentSteerAngle * steerSpeedScale * dir;
-        this.lateralSlipVelocity = THREE.MathUtils.lerp(this.lateralSlipVelocity, 0, delta * 8);
+        // Clean mechanical grip cornering with speed scaling
+        const gripTurnSpeed = Math.min(forwardSpeed, 36.0);
+        turnRate = (this.currentSteerAngle / wheelbase) * gripTurnSpeed * 0.45 * dir;
+        this.lateralSlipVelocity = THREE.MathUtils.lerp(this.lateralSlipVelocity, 0, delta * 9.0);
       }
     } else {
       this.isDrifting = false;
@@ -141,7 +157,7 @@ export class VehiclePhysics {
     this.headingAngle += turnRate * delta;
     this.driftAngle = this.isDrifting ? Math.abs(Math.round(THREE.MathUtils.radToDeg(this.currentSteerAngle))) : 0;
 
-    // 5. Vertical Suspension & Asphalt 9 Jump Ramps
+    // 5. Vertical Suspension & Ground Adhesion
     const targetSuspensionY = this.groundHeight + 0.42;
     const isAboveGround = this.position.y > targetSuspensionY + 0.05;
 
@@ -180,34 +196,54 @@ export class VehiclePhysics {
     this.position.x += forwardX + latX;
     this.position.z += forwardZ + latZ;
 
-    // 7. Track Boundary & Armco Guardrail Collision (Keeps car safely on asphalt)
+    // 7. Track Boundary & Armco Guardrail Collision (Strict Containment - Cannot Mount Railing!)
     if (closestPointFunc) {
-      const { point, dist } = closestPointFunc(this.position.x, this.position.z);
-      const roadHalfWidth = 6.4; // Road is 12m wide, guardrails at +/-6.8m
+      const { point, tangent, dist } = closestPointFunc(this.position.x, this.position.z);
 
-      if (dist > roadHalfWidth) {
-        // Compute pushback direction vector towards track centerline
+      // Road is 12.0m wide (center to edge is 6.0m). Guardrail centerline is at 6.8m.
+      // Car is 2.0m wide (half-width 1.0m).
+      // Max allowed center distance = 6.8m - 1.0m - 0.2m buffer = 5.6m.
+      // At 5.6m, the outer edge of the car lightly brushes the Armco guardrail and CANNOT mount on top!
+      const maxCenterDist = 5.6;
+
+      if (dist > maxCenterDist) {
+        // Vector from car position towards track centerline
         const dx = point.x - this.position.x;
         const dz = point.z - this.position.z;
         const len = Math.sqrt(dx * dx + dz * dz) || 1;
         const nx = dx / len;
         const nz = dz / len;
 
-        // Position clamped firmly inside guardrail
-        this.position.x = point.x - nx * roadHalfWidth;
-        this.position.z = point.z - nz * roadHalfWidth;
+        // 1. Rigidly clamp car position strictly inside the barrier (ZERO penetration)
+        this.position.x = point.x - nx * maxCenterDist;
+        this.position.z = point.z - nz * maxCenterDist;
 
-        // Scrub forward velocity and bounce inward
-        this.velocity.z *= 0.85;
+        // 2. Rigidly lock vertical suspension to asphalt road plane (CANNOT CLIMB ON RAILING!)
+        this.position.y = targetSuspensionY;
+        this.verticalVelocity = 0;
+        this.isAirborne = false;
+        this.isJumping = false;
+        this.jumpAirTimer = 0;
+
+        // 3. Need for Speed / Forza style barrier glance:
+        // Deflect heading to seamlessly align with track tangent direction
+        const trackHeading = Math.atan2(tangent.x, tangent.z);
+        this.headingAngle = THREE.MathUtils.lerp(this.headingAngle, trackHeading, Math.min(1.0, delta * 12.0));
+
+        // 4. Cancel outward lateral velocity
+        this.lateralSlipVelocity = 0;
+
+        // 5. Realistic friction scrub along metal barrier
+        this.velocity.z *= Math.max(0.72, 1.0 - delta * 1.8);
         this.speedKmh = Math.abs(Math.round((this.velocity.z * 3600) / 1000));
-        this.headingAngle += nx * 0.12;
+
         this.hadBarrierCollision = true;
       }
     }
 
     // 8. Dynamic Chassis Roll & Pitch Visuals
-    const targetRoll = this.isDrifting ? -this.currentSteerAngle * 0.42 : -this.currentSteerAngle * 0.18;
-    const targetPitch = (input.throttle * 0.045) - (input.brake * 0.09);
+    const targetRoll = this.isDrifting ? -this.currentSteerAngle * 0.38 : -this.currentSteerAngle * 0.16;
+    const targetPitch = (this.smoothedThrottle * 0.038) - (input.brake * 0.075);
 
     this.rotation.set(targetPitch, this.headingAngle, targetRoll, 'YXZ');
     this.quaternion.setFromEuler(this.rotation);
@@ -235,16 +271,13 @@ export class VehiclePhysics {
 
   // Handle Collision Impact with Civilian Traffic Car
   public applyObstacleCollision(normalX: number, normalZ: number, impactSpeedKmh: number) {
-    // Physical pushback
     this.position.x += normalX * 1.2;
     this.position.z += normalZ * 1.5;
 
-    // Momentum drop based on severity
     const speedDropRatio = THREE.MathUtils.clamp(impactSpeedKmh / 200, 0.35, 0.75);
     this.velocity.z *= (1.0 - speedDropRatio);
     this.speedKmh = Math.abs(Math.round((this.velocity.z * 3600) / 1000));
 
-    // Damage
     this.health = Math.max(10, this.health - 15);
     this.nitroFuel = Math.max(0, this.nitroFuel - 25);
   }
@@ -259,17 +292,18 @@ export class VehiclePhysics {
   private calculateGearAndRpm() {
     if (this.velocity.z < -0.1) {
       this.gear = 'R';
-      this.rpm = 1200 + (Math.abs(this.speedKmh) / 25) * 5500;
+      this.rpm = 1100 + (Math.abs(this.speedKmh) / 25) * 4500;
       return;
     }
 
     if (this.speedKmh < 1) {
       this.gear = 1;
-      this.rpm = 850;
+      this.rpm = THREE.MathUtils.lerp(850, 2200, this.smoothedThrottle);
       return;
     }
 
-    const gearRatios = [0, 55, 105, 155, 215, 275, 360];
+    // Realistic 6-speed dual-clutch transmission speeds (km/h)
+    const gearRatios = [0, 58, 108, 158, 215, 275, 360];
     let selectedGear = 1;
 
     for (let g = 1; g < gearRatios.length; g++) {
@@ -283,12 +317,13 @@ export class VehiclePhysics {
     const prevGearSpeed = gearRatios[selectedGear - 1];
     const nextGearSpeed = gearRatios[selectedGear];
     const gearSpan = nextGearSpeed - prevGearSpeed;
-    const progressInGear = (this.speedKmh - prevGearSpeed) / gearSpan;
+    const progressInGear = THREE.MathUtils.clamp((this.speedKmh - prevGearSpeed) / gearSpan, 0, 1);
 
-    this.rpm = THREE.MathUtils.lerp(2400, 8400, progressInGear);
+    // Idle at 2400 RPM in gear, redline at 8500 RPM
+    this.rpm = THREE.MathUtils.lerp(2400, 8500, progressInGear);
   }
 
-  public resetPosition(spawnPos: THREE.Vector3 = new THREE.Vector3(0, 0.42, 10)) {
+  public resetPosition(spawnPos: THREE.Vector3 = new THREE.Vector3(0, 0.64, 10)) {
     this.position.copy(spawnPos);
     this.velocity.set(0, 0, 0);
     this.headingAngle = 0;
@@ -297,6 +332,7 @@ export class VehiclePhysics {
     this.isAirborne = false;
     this.isJumping = false;
     this.lateralSlipVelocity = 0;
+    this.smoothedThrottle = 0;
     this.health = 100;
   }
 }
