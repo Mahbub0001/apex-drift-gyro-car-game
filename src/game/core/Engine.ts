@@ -28,13 +28,24 @@ export class GameEngine {
   public nearMissActive: boolean = false;
   private nearMissTimer: number = 0;
 
-  // Remote Multiplayer Cars
+  // Collision callback to trigger sound
+  public onCrashCallback?: (severity: number) => void;
+
+  // Remote Multiplayer Opponents
   private opponentCars: Map<string, OpponentCarEntity> = new Map();
 
   private canvas: HTMLCanvasElement;
   private cameraMode: 'chase' | 'hood' | 'cinematic' = 'chase';
   private cameraTarget: THREE.Vector3 = new THREE.Vector3();
   private baseFov: number = 60;
+
+  // Camera Shake
+  private cameraShakeTimer: number = 0;
+  private cameraShakeIntensity: number = 0;
+
+  // Nitro Flames
+  private nitroFlameL: THREE.Mesh | null = null;
+  private nitroFlameR: THREE.Mesh | null = null;
 
   public isLetterboxed: boolean = false;
 
@@ -46,7 +57,8 @@ export class GameEngine {
 
     // 1. Scene & Renderer Setup
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x9cc3db, 0.0012);
+    this.scene.background = new THREE.Color(0x90c4f8);
+    this.scene.fog = new THREE.FogExp2(0xa0d0f5, 0.001);
 
     this.camera = new THREE.PerspectiveCamera(this.baseFov, width / height, 0.2, 2000);
     this.camera.position.set(0, 3, -8);
@@ -60,11 +72,11 @@ export class GameEngine {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // 2. Load HDR Environment Map for Realistic Clearcoat Reflections
+    // 2. Load HDR Environment Map
     new RGBELoader().load(
       '/textures/env.hdr',
       (texture) => {
@@ -72,24 +84,53 @@ export class GameEngine {
         this.scene.environment = texture;
       },
       undefined,
-      (err) => console.warn('[Engine] HDR texture warning:', err)
+      (err) => console.warn('[Engine] HDR warning:', err)
     );
 
-    // 3. Build Highway Track & Autumn British Countryside
+    // 3. Track Environment
     this.track = new HighwayTrack(this.scene);
 
-    // 4. Traffic Obstacles AI Manager
+    // 4. Dynamic Civilian Traffic AI
     this.trafficManager = new TrafficManager(this.scene, this.track.splineCurve);
 
-    // 5. Local Player Car (Configured for Selected Supercar)
-    this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.45, 10));
+    // 5. Local Player Car
+    this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.42, 10));
     this.vehiclePhysics.maxSpeedKmh = carConfig.topSpeedKmh;
     this.vehiclePhysics.accelerationRate = carConfig.accelerationRate;
 
     this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       this.carMeshes = loadedMeshes;
+      this.setupNitroFlames();
     });
     this.scene.add(this.carMeshes.root);
+    this.setupNitroFlames();
+  }
+
+  // Dual Exhaust Nitro Jet Flames
+  private setupNitroFlames() {
+    if (this.nitroFlameL && this.nitroFlameR) {
+      this.carMeshes.root.remove(this.nitroFlameL, this.nitroFlameR);
+    }
+
+    const flameGeo = new THREE.ConeGeometry(0.08, 0.55, 12);
+    flameGeo.rotateX(Math.PI / 2); // Point backward
+
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0x00f2fe,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending
+    });
+
+    this.nitroFlameL = new THREE.Mesh(flameGeo, flameMat);
+    this.nitroFlameL.position.set(-0.35, 0.28, 2.25);
+    this.nitroFlameL.visible = false;
+
+    this.nitroFlameR = new THREE.Mesh(flameGeo, flameMat);
+    this.nitroFlameR.position.set(0.35, 0.28, 2.25);
+    this.nitroFlameR.visible = false;
+
+    this.carMeshes.root.add(this.nitroFlameL, this.nitroFlameR);
   }
 
   public setCar(carConfig: SuperCarConfig) {
@@ -100,51 +141,57 @@ export class GameEngine {
     this.scene.remove(this.carMeshes.root);
     this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       this.carMeshes = loadedMeshes;
+      this.setupNitroFlames();
     });
     this.scene.add(this.carMeshes.root);
   }
 
-  // Update or Spawn Remote Opponents in the 3D world
   public syncOpponents(opponents: RemotePlayerState[]) {
-    opponents.forEach((opp) => {
-      let carEntity = this.opponentCars.get(opp.id);
-      if (!carEntity) {
-        const colorHex = parseInt((opp.color || '#a855f7').replace('#', '0x'), 16);
-        const oppConfig = { ...SUPER_CARS[0], bodyColorHex: colorHex };
-        const meshes = createSportsCar(oppConfig);
-        this.scene.add(meshes.root);
+    const activeIds = new Set(opponents.map((o) => o.id));
 
-        carEntity = {
-          id: opp.id,
-          meshes,
-          targetPos: new THREE.Vector3(...opp.position),
-          targetQuat: new THREE.Quaternion(...opp.rotation),
-          currentSpeed: opp.speedKmh
-        };
-        this.opponentCars.set(opp.id, carEntity);
-      } else {
-        carEntity.targetPos.set(...opp.position);
-        carEntity.targetQuat.set(...opp.rotation);
-        carEntity.currentSpeed = opp.speedKmh;
-      }
-    });
-
-    const currentIds = new Set(opponents.map((o) => o.id));
-    this.opponentCars.forEach((car, id) => {
-      if (!currentIds.has(id)) {
-        this.scene.remove(car.meshes.root);
+    this.opponentCars.forEach((entity, id) => {
+      if (!activeIds.has(id)) {
+        this.scene.remove(entity.meshes.root);
         this.opponentCars.delete(id);
       }
     });
+
+    opponents.forEach((remotePlayer) => {
+      let entity = this.opponentCars.get(remotePlayer.id);
+
+      if (!entity) {
+        const carConfig = SUPER_CARS.find((c) => c.id === remotePlayer.carId) || SUPER_CARS[0];
+        const meshes = createSportsCar(carConfig);
+        this.scene.add(meshes.root);
+
+        entity = {
+          id: remotePlayer.id,
+          meshes,
+          targetPos: new THREE.Vector3(...remotePlayer.position),
+          targetQuat: new THREE.Quaternion(...remotePlayer.rotation),
+          currentSpeed: remotePlayer.speedKmh
+        };
+        this.opponentCars.set(remotePlayer.id, entity);
+      }
+
+      entity.targetPos.set(...remotePlayer.position);
+      entity.targetQuat.set(...remotePlayer.rotation);
+      entity.currentSpeed = remotePlayer.speedKmh;
+    });
+  }
+
+  public triggerCameraShake(intensity: number = 0.45, duration: number = 0.35) {
+    this.cameraShakeIntensity = intensity;
+    this.cameraShakeTimer = duration;
   }
 
   public update(delta: number, input: ControllerInput): VehicleTelemetry {
-    // 1. Toggle Camera View ('C' key or button)
+    // 1. Toggle Camera View ('C' key)
     if (input.cameraSwitch) {
       this.cameraMode = this.cameraMode === 'chase' ? 'hood' : 'chase';
     }
 
-    // 2. Check for Jump Ramp Trigger
+    // 2. Jump Ramp Launch
     for (const ramp of this.track.ramps) {
       const dist = this.vehiclePhysics.position.distanceTo(ramp.position);
       if (dist < 5.0 && this.vehiclePhysics.speedKmh > 50 && !this.vehiclePhysics.isAirborne) {
@@ -153,22 +200,35 @@ export class GameEngine {
       }
     }
 
-    // 3. Update Vehicle Physics with Highway Elevation
-    const roadElevationFunc = (x: number, z: number) => this.track.getElevationAt(x, z);
-    const telemetry = this.vehiclePhysics.update(delta, input, roadElevationFunc);
+    // 3. Update Vehicle Physics with Highway Elevation & Road Bounds
+    const telemetry = this.vehiclePhysics.update(
+      delta,
+      input,
+      (x, z) => this.track.getElevationAt(x, z),
+      (x, z) => this.track.getClosestSplinePoint(x, z)
+    );
 
-    // 4. Update Dynamic Civilian Traffic AI
+    // Guardrail collision reaction
+    if (this.vehiclePhysics.hadBarrierCollision) {
+      this.triggerCameraShake(0.3, 0.2);
+      this.onCrashCallback?.(0.5);
+    }
+
+    // 4. Update Dynamic Civilian Traffic AI with Solid Physical Impact
     this.trafficStates = this.trafficManager.update(
       delta,
       this.vehiclePhysics.position,
-      () => {
-        this.vehiclePhysics.velocity.z *= 0.7;
-        this.vehiclePhysics.position.x += (Math.random() - 0.5) * 0.8;
+      this.vehiclePhysics.speedKmh,
+      (normalX, normalZ, impactSpeedKmh) => {
+        // Physical collision impact
+        this.vehiclePhysics.applyObstacleCollision(normalX, normalZ, impactSpeedKmh);
+        this.triggerCameraShake(0.65, 0.4);
+        this.onCrashCallback?.(impactSpeedKmh / 100);
       },
       () => {
         this.nearMissActive = true;
         this.nearMissTimer = 1.2;
-        this.vehiclePhysics.nitroFuel = Math.min(100, this.vehiclePhysics.nitroFuel + 35);
+        this.vehiclePhysics.nitroFuel = Math.min(100, this.vehiclePhysics.nitroFuel + 30);
       }
     );
 
@@ -191,11 +251,11 @@ export class GameEngine {
     });
 
     // 6. Sync Local 3D Car Mesh with Physics
-    const { root, wheels, frontWheels, bodyMaterial } = this.carMeshes;
+    const { root, wheels, frontWheels } = this.carMeshes;
     root.position.copy(this.vehiclePhysics.position);
     root.quaternion.copy(this.vehiclePhysics.quaternion);
 
-    // Animate Wheels (Spin on local axis + Turn front wheels)
+    // Wheel Animation
     const forwardSpeed = this.vehiclePhysics.velocity.z;
     const wheelSpinRate = (forwardSpeed * delta) / 0.35;
 
@@ -204,20 +264,25 @@ export class GameEngine {
     });
 
     frontWheels.forEach((wheel) => {
-      wheel.rotation.y = -input.steer * 0.45;
+      wheel.rotation.y = -input.steer * 0.42;
     });
 
-    // Nitro Visual Glow Shift
-    if (input.nitro && telemetry.nitroFuel > 0 && input.throttle > 0.1) {
-      bodyMaterial.color.setHex(0x9900ff);
-    } else {
-      bodyMaterial.color.setHex(this.currentCarConfig.bodyColorHex);
+    // 7. Nitro Jet Flame VFX
+    const isNitroFiring = input.nitro && telemetry.nitroFuel > 0 && input.throttle > 0.1;
+    if (this.nitroFlameL && this.nitroFlameR) {
+      this.nitroFlameL.visible = isNitroFiring;
+      this.nitroFlameR.visible = isNitroFiring;
+      if (isNitroFiring) {
+        const flameScale = 0.8 + Math.random() * 0.5;
+        this.nitroFlameL.scale.set(1, flameScale, 1);
+        this.nitroFlameR.scale.set(1, flameScale, 1);
+      }
     }
 
-    // 7. Asphalt 9-Style Dynamic Camera Choreography (Always Upright!)
+    // 8. Asphalt 9-Style Dynamic Camera Choreography
     this.updateCamera(delta, telemetry, input);
 
-    // 8. Render Scene
+    // 9. Render Scene
     this.renderer.render(this.scene, this.camera);
 
     return telemetry;
@@ -230,10 +295,13 @@ export class GameEngine {
     const forwardX = Math.sin(heading);
     const forwardZ = Math.cos(heading);
 
+    // Speed FOV expansion (60 deg -> 78 deg at 300 km/h)
     const speedRatio = Math.min(1, telemetry.speedKmh / 280);
-    const targetFov = this.baseFov + (speedRatio * 15) + (input.nitro ? 8 : 0);
+    const targetFov = this.baseFov + (speedRatio * 16) + (input.nitro ? 8 : 0);
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, delta * 6);
     this.camera.updateProjectionMatrix();
+
+    this.camera.up.set(0, 1, 0);
 
     if (telemetry.isJumping) {
       this.isLetterboxed = true;
@@ -272,10 +340,11 @@ export class GameEngine {
       const rightX = forwardZ;
       const rightZ = -forwardX;
 
+      const camDistance = input.nitro ? 7.2 : 6.4;
       const idealCamPos = new THREE.Vector3(
-        carPos.x - forwardX * 6.5 + rightX * driftOffset,
+        carPos.x - forwardX * camDistance + rightX * driftOffset,
         carPos.y + 2.2,
-        carPos.z - forwardZ * 6.5 + rightZ * driftOffset
+        carPos.z - forwardZ * camDistance + rightZ * driftOffset
       );
 
       this.camera.position.lerp(idealCamPos, Math.min(1, delta * 12));
@@ -288,6 +357,15 @@ export class GameEngine {
 
       this.cameraTarget.lerp(targetLookAt, Math.min(1, delta * 15));
       this.camera.lookAt(this.cameraTarget);
+    }
+
+    // Apply Camera Shake on Impact / Crash
+    if (this.cameraShakeTimer > 0) {
+      this.cameraShakeTimer -= delta;
+      const shakeX = (Math.random() - 0.5) * this.cameraShakeIntensity;
+      const shakeY = (Math.random() - 0.5) * this.cameraShakeIntensity;
+      this.camera.position.x += shakeX;
+      this.camera.position.y += shakeY;
     }
   }
 
