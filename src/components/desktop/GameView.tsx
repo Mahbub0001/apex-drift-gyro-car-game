@@ -7,7 +7,7 @@ import { WebRTCHost } from '../../services/webrtc';
 import { MultiplayerRoomManager } from '../../services/multiplayer';
 import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState, SuperCarConfig, SUPER_CARS } from '../../types';
 import QRCode from 'qrcode';
-import { QrCode, X, Users, Globe, Volume2, VolumeX, Warehouse } from 'lucide-react';
+import { QrCode, X, Users, Globe, Volume2, VolumeX, Warehouse, Copy, Check, ExternalLink, Wifi } from 'lucide-react';
 
 interface GameViewProps {
   roomId: string;
@@ -90,15 +90,43 @@ export const GameView: React.FC<GameViewProps> = ({
     }
   };
 
-  // Generate QR Code for Phone Gyro Controller
+  // LAN IP Detection & Dynamic QR Code URL for Zero-Install Phone Gyro
+  const [controllerUrl, setControllerUrl] = useState<string>('');
+  const [lanIp, setLanIp] = useState<string>('');
+  const [availableIps, setAvailableIps] = useState<string[]>([]);
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
   useEffect(() => {
-    const controllerUrl = `${window.location.origin}/?mode=controller&room=${roomId}`;
-    QRCode.toDataURL(controllerUrl, {
-      width: 220,
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      fetch('/api/lan-ip')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.primary) {
+            setLanIp(data.primary);
+            setAvailableIps(data.all || [data.primary]);
+          }
+        })
+        .catch(() => {
+          setLanIp('192.168.10.230');
+        });
+    }
+  }, []);
+
+  useEffect(() => {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const host = isLocal ? (lanIp || '192.168.10.230') : window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const protocol = window.location.protocol;
+    const url = `${protocol}//${host}${port}/?mode=controller&room=${roomId}`;
+    setControllerUrl(url);
+
+    QRCode.toDataURL(url, {
+      width: 240,
       margin: 2,
       color: { dark: '#00F2FE', light: '#08090C' }
     }).then(setQrDataUrl);
-  }, [roomId]);
+  }, [roomId, lanIp]);
 
   // WebRTC Host Listener
   useEffect(() => {
@@ -350,8 +378,8 @@ export const GameView: React.FC<GameViewProps> = ({
 
       {/* QR Code Connect Modal */}
       {isQrModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-sm w-full text-white text-center font-racing relative shadow-2xl shadow-cyan-950/50">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white text-center font-racing relative shadow-2xl shadow-cyan-950/60">
             <button
               onClick={() => setIsQrModalOpen(false)}
               className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
@@ -359,25 +387,81 @@ export const GameView: React.FC<GameViewProps> = ({
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="text-xl font-display font-bold text-cyan-300 mb-1">
-              PAIR GYRO WHEEL
+            <h3 className="text-xl font-display font-bold text-cyan-300 mb-1 flex items-center justify-center gap-2">
+              <QrCode className="w-5 h-5 text-cyan-400" /> PAIR GYRO CONTROLLER
             </h3>
-            <p className="text-xs text-gray-400 mb-4">
-              Scan with your smartphone camera to steer your car with real-time physical tilt!
+            <p className="text-xs text-gray-400 mb-3">
+              Scan with your phone's camera (same Wi-Fi) to turn your phone into a physical tilt steering wheel!
             </p>
 
-            <div className="bg-[#08090C] p-3 rounded-xl border border-cyan-500/20 flex items-center justify-center mb-4">
-              {qrDataUrl && <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded" />}
+            <div className="bg-[#08090C] p-3 rounded-xl border border-cyan-500/25 flex flex-col items-center justify-center mb-3">
+              {qrDataUrl ? (
+                <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded shadow-lg shadow-cyan-500/10" />
+              ) : (
+                <div className="w-48 h-48 flex items-center justify-center text-cyan-400/50 text-xs font-mono">
+                  Generating QR...
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-center space-x-2 text-xs font-mono text-gray-300 mb-4">
-              <span className={`w-2 h-2 rounded-full ${isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span>{isPhoneConnected ? 'CONNECTED & SYNCED' : 'AWAITING SCAN'}</span>
+            {/* Connection Link & Copy */}
+            <div className="bg-black/40 border border-white/10 rounded-lg p-2.5 mb-3 text-left">
+              <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 mb-1">
+                <span className="flex items-center gap-1 text-cyan-400"><Wifi className="w-3 h-3" /> Controller Link:</span>
+                <button
+                  onClick={() => {
+                    if (controllerUrl) {
+                      navigator.clipboard.writeText(controllerUrl);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }
+                  }}
+                  className="flex items-center gap-1 text-cyan-300 hover:text-cyan-200 transition-colors"
+                >
+                  {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedLink ? 'COPIED!' : 'COPY'}</span>
+                </button>
+              </div>
+              <div className="text-[11px] font-mono text-gray-300 break-all select-all bg-black/60 p-1.5 rounded">
+                {controllerUrl || 'Detecting network...'}
+              </div>
+            </div>
+
+            {/* IP Switcher if multiple LAN adapters */}
+            {availableIps.length > 1 && (
+              <div className="flex items-center justify-center gap-2 mb-3 text-[11px] font-mono text-gray-400">
+                <span>Wi-Fi / LAN IP:</span>
+                <select
+                  value={lanIp}
+                  onChange={(e) => setLanIp(e.target.value)}
+                  className="bg-black/60 border border-cyan-500/30 rounded px-2 py-1 text-cyan-300 text-[11px] outline-none"
+                >
+                  {availableIps.map((ip) => (
+                    <option key={ip} value={ip}>{ip}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Status & Test in Tab Button */}
+            <div className="flex items-center justify-between text-xs font-mono text-gray-300 mb-4 px-1">
+              <div className="flex items-center space-x-2">
+                <span className={`w-2 h-2 rounded-full ${isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span>{isPhoneConnected ? 'PHONE SYNCED' : 'WAITING FOR SCAN'}</span>
+              </div>
+              <a
+                href={controllerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 underline"
+              >
+                <ExternalLink className="w-3 h-3" /> Test in Tab
+              </a>
             </div>
 
             <button
               onClick={() => setIsQrModalOpen(false)}
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-xl font-bold uppercase text-xs tracking-wider"
+              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-xl font-bold uppercase text-xs tracking-wider transition-all shadow-lg shadow-cyan-500/20"
             >
               RESUME RACING
             </button>

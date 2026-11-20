@@ -384,16 +384,16 @@ export class GameEngine {
 
     if (this.cameraMode === 'hood') {
       const hoodPos = new THREE.Vector3(
-        carPos.x + forwardX * 1.5,
-        carPos.y + 0.65,
-        carPos.z + forwardZ * 1.5
+        carPos.x + forwardX * 1.6,
+        carPos.y + 1.15,
+        carPos.z + forwardZ * 1.6
       );
       this.camera.position.copy(hoodPos);
 
       const lookTarget = new THREE.Vector3(
-        carPos.x + forwardX * 30,
-        carPos.y + 0.65,
-        carPos.z + forwardZ * 30
+        carPos.x + forwardX * 35,
+        carPos.y + 1.05,
+        carPos.z + forwardZ * 35
       );
       this.camera.lookAt(lookTarget);
     } else {

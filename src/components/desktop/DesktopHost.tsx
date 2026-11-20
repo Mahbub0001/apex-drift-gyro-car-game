@@ -31,13 +31,31 @@ export const DesktopHost: React.FC<DesktopHostProps> = ({ roomId, onLaunchGame }
   const threeCanvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<{ scene: THREE.Scene; camera: THREE.PerspectiveCamera; renderer: THREE.WebGLRenderer; carChassis: THREE.Group } | null>(null);
 
+  const [controllerUrl, setControllerUrl] = useState<string>('');
+  const [lanIp, setLanIp] = useState<string>('');
+
+  useEffect(() => {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      fetch('/api/lan-ip')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.primary) setLanIp(data.primary);
+        })
+        .catch(() => setLanIp('192.168.10.230'));
+    }
+  }, []);
+
   // Generate QR Code with mobile controller URL
   useEffect(() => {
-    // Generate URL based on current host/IP
-    const currentOrigin = window.location.origin;
-    const controllerUrl = `${currentOrigin}/?mode=controller&room=${roomId}`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const host = isLocal ? (lanIp || '192.168.10.230') : window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const protocol = window.location.protocol;
+    const url = `${protocol}//${host}${port}/?mode=controller&room=${roomId}`;
+    setControllerUrl(url);
 
-    QRCode.toDataURL(controllerUrl, {
+    QRCode.toDataURL(url, {
       width: 260,
       margin: 2,
       color: {
@@ -45,7 +63,7 @@ export const DesktopHost: React.FC<DesktopHostProps> = ({ roomId, onLaunchGame }
         light: '#08090C'
       }
     }).then(setQrDataUrl);
-  }, [roomId]);
+  }, [roomId, lanIp]);
 
   // Initialize WebRTC Host
   useEffect(() => {
@@ -344,7 +362,7 @@ export const DesktopHost: React.FC<DesktopHostProps> = ({ roomId, onLaunchGame }
           {/* Quick Direct Link button */}
           <div className="pt-2">
             <a
-              href={`/?mode=controller&room=${roomId}`}
+              href={controllerUrl || `/?mode=controller&room=${roomId}`}
               target="_blank"
               rel="noreferrer"
               className="w-full block text-center py-2.5 bg-white/10 hover:bg-white/20 active:scale-98 rounded-xl text-xs font-bold text-cyan-300 uppercase tracking-wider transition-all border border-cyan-500/30"
