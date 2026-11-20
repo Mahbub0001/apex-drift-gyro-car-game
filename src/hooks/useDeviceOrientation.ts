@@ -105,19 +105,18 @@ export function useDeviceOrientation() {
     if (!isPermissionGranted) return;
 
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      // In landscape:
-      // Typically beta (-180 to 180) or gamma (-90 to 90) reflects tilt
-      const orientation = window.screen.orientation?.angle ?? (window.orientation as number) ?? 90;
-      
+      const isLand = window.innerWidth > window.innerHeight;
       let rawAngle = 0;
-      if (orientation === 90) {
-        // Landscape Left
-        rawAngle = -(event.beta ?? 0);
-      } else if (orientation === -90 || orientation === 270) {
-        // Landscape Right
-        rawAngle = event.beta ?? 0;
+
+      if (isLand) {
+        const orientation = window.screen.orientation?.angle ?? (window.orientation as number) ?? 90;
+        if (orientation === -90 || orientation === 270) {
+          rawAngle = event.beta ?? 0;
+        } else {
+          rawAngle = -(event.beta ?? 0);
+        }
       } else {
-        // Portrait fallback
+        // Portrait mode steering: gamma (-90 to +90 degrees tilt)
         rawAngle = event.gamma ?? 0;
       }
 
