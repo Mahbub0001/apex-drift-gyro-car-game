@@ -48,6 +48,17 @@ export class GameEngine {
   private nitroFlameL: THREE.Mesh | null = null;
   private nitroFlameR: THREE.Mesh | null = null;
 
+  // Interactive Braking Taillights
+  private taillightL: THREE.Mesh | null = null;
+  private taillightR: THREE.Mesh | null = null;
+  private taillightMat: THREE.MeshStandardMaterial | null = null;
+
+  // Dynamic Tire Skid Marks System
+  private skidMarkMeshes: THREE.Mesh[] = [];
+  private skidPoolIndex: number = 0;
+  private maxSkids: number = 160;
+  private lastSkidPos: THREE.Vector3 = new THREE.Vector3();
+
   // Radiator Steam / Damage Smoke System
   private damageSmokePuffs: THREE.Mesh[] = [];
   private dirSunLight: THREE.DirectionalLight | null = null;
@@ -63,7 +74,7 @@ export class GameEngine {
     // 1. Scene & Renderer Setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x8bc0f8);
-    this.scene.fog = new THREE.FogExp2(0xa0d0f5, 0.001);
+    this.scene.fog = new THREE.Fog(0xc2ddf5, 250, 1600); // Natural crisp atmospheric horizon
 
     this.camera = new THREE.PerspectiveCamera(this.baseFov, width / height, 0.2, 2000);
     this.camera.position.set(0, 3, -8);
@@ -77,7 +88,7 @@ export class GameEngine {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.15; // Crisp vibrant lighting
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -107,10 +118,13 @@ export class GameEngine {
     this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       this.carMeshes = loadedMeshes;
       this.setupNitroFlames();
+      this.setupTaillights();
     });
     this.scene.add(this.carMeshes.root);
     this.setupNitroFlames();
+    this.setupTaillights();
     this.setupDamageSmoke();
+    this.setupSkidMarkPool();
   }
 
   // Dual Exhaust Nitro Jet Flames
@@ -140,6 +154,71 @@ export class GameEngine {
     this.carMeshes.root.add(this.nitroFlameL, this.nitroFlameR);
   }
 
+  // Interactive Braking Taillights
+  private setupTaillights() {
+    if (this.taillightL && this.taillightR) {
+      this.carMeshes.root.remove(this.taillightL, this.taillightR);
+    }
+
+    const tailGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.05, 16);
+    tailGeo.rotateX(Math.PI / 2);
+
+    this.taillightMat = new THREE.MeshStandardMaterial({
+      color: 0x66000e,
+      emissive: 0x330005,
+      emissiveIntensity: 0.35,
+      roughness: 0.2
+    });
+
+    this.taillightL = new THREE.Mesh(tailGeo, this.taillightMat);
+    this.taillightL.position.set(-0.52, 0.58, 2.05);
+
+    this.taillightR = new THREE.Mesh(tailGeo, this.taillightMat);
+    this.taillightR.position.set(0.52, 0.58, 2.05);
+
+    this.carMeshes.root.add(this.taillightL, this.taillightR);
+  }
+
+  // Dynamic Tire Skid Mark Trails
+  private setupSkidMarkPool() {
+    const skidGeo = new THREE.PlaneGeometry(0.32, 1.4);
+    skidGeo.rotateX(-Math.PI / 2);
+
+    const skidMat = new THREE.MeshBasicMaterial({
+      color: 0x111115,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false
+    });
+
+    for (let i = 0; i < this.maxSkids; i++) {
+      const mesh = new THREE.Mesh(skidGeo, skidMat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.skidMarkMeshes.push(mesh);
+    }
+  }
+
+  private addSkidMark(pos: THREE.Vector3, heading: number) {
+    if (this.skidMarkMeshes.length === 0) return;
+
+    const rightX = Math.cos(heading);
+    const rightZ = -Math.sin(heading);
+
+    for (const side of [-0.82, 0.82]) {
+      const mark = this.skidMarkMeshes[this.skidPoolIndex];
+      this.skidPoolIndex = (this.skidPoolIndex + 1) % this.maxSkids;
+
+      mark.position.set(
+        pos.x + rightX * side,
+        pos.y - 0.38,
+        pos.z + rightZ * side
+      );
+      mark.rotation.y = heading;
+      mark.visible = true;
+    }
+  }
+
   // Radiator Steam / Damage Smoke System
   private setupDamageSmoke() {
     const smokeMat = new THREE.MeshStandardMaterial({
@@ -166,8 +245,11 @@ export class GameEngine {
     this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       this.carMeshes = loadedMeshes;
       this.setupNitroFlames();
+      this.setupTaillights();
     });
     this.scene.add(this.carMeshes.root);
+    this.setupNitroFlames();
+    this.setupTaillights();
   }
 
   public syncOpponents(opponents: RemotePlayerState[]) {
@@ -352,10 +434,38 @@ export class GameEngine {
       }
     }
 
-    // 8. Dynamic Camera Choreography (Always Upright!)
+    // 8. Curb Detection & Audio Feedback
+    const closestTrackPt = this.track.getClosestSplinePoint(this.vehiclePhysics.position.x, this.vehiclePhysics.position.z);
+    telemetry.isOnCurb = closestTrackPt.dist >= 5.0 && closestTrackPt.dist <= 6.2 && telemetry.speedKmh > 20;
+
+    // 9. Interactive Braking Taillights
+    const isBraking = input.brake > 0.05 || input.handbrake;
+    if (this.taillightMat) {
+      if (isBraking) {
+        this.taillightMat.color.setHex(0xff1122);
+        this.taillightMat.emissive.setHex(0xff0022);
+        this.taillightMat.emissiveIntensity = 3.2;
+      } else {
+        this.taillightMat.color.setHex(0x66000e);
+        this.taillightMat.emissive.setHex(0x330005);
+        this.taillightMat.emissiveIntensity = 0.35;
+      }
+    }
+
+    // 10. Dynamic Tire Skid Marks System
+    const isSkidding = (telemetry.isDrifting || input.handbrake || (input.brake > 0.35 && telemetry.speedKmh > 40)) && !telemetry.isAirborne;
+    if (isSkidding) {
+      const movedDist = this.vehiclePhysics.position.distanceTo(this.lastSkidPos);
+      if (movedDist > 1.2) {
+        this.addSkidMark(this.vehiclePhysics.position, this.vehiclePhysics.rotation.y);
+        this.lastSkidPos.copy(this.vehiclePhysics.position);
+      }
+    }
+
+    // 11. Dynamic Camera Choreography (Always Upright!)
     this.updateCamera(delta, telemetry, input);
 
-    // 9. Render Scene
+    // 12. Render Scene
     this.renderer.render(this.scene, this.camera);
 
     return telemetry;

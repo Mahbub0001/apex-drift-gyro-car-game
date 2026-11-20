@@ -163,7 +163,7 @@ export const GarageView: React.FC<GarageViewProps> = ({
               <span className="text-[10px] uppercase font-bold">0-100 ACCEL</span>
             </div>
             <span className="text-2xl font-display font-extrabold text-white">
-              {(100 / activeCar.accelerationRate).toFixed(1)} <span className="text-xs text-gray-400">S</span>
+              {((100 / 3.6) / (activeCar.accelerationRate * 1.18)).toFixed(1)} <span className="text-xs text-gray-400">S</span>
             </span>
           </div>
 

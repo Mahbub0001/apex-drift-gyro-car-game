@@ -268,7 +268,9 @@ export const GameView: React.FC<GameViewProps> = ({
         currentTelemetry.speedKmh,
         currentTelemetry.isDrifting,
         currentInput.nitro,
-        currentInput.throttle
+        currentInput.throttle,
+        !!currentTelemetry.isOnCurb,
+        currentInput.brake > 0.05
       );
 
       // 3. Throttle React HUD Updates to 25 FPS (prevents page stutter/refresh feel)

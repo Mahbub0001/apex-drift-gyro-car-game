@@ -34,6 +34,13 @@ export class SoundEngine {
   private nitroFilter: BiquadFilterNode | null = null;
   private nitroGain: GainNode | null = null;
 
+  // 6. Curb Rumble Strip & Ceramic Brake Squeal
+  private curbOsc: OscillatorNode | null = null;
+  private curbFilter: BiquadFilterNode | null = null;
+  private curbGain: GainNode | null = null;
+  private brakeSquealOsc: OscillatorNode | null = null;
+  private brakeSquealGain: GainNode | null = null;
+
   // Master Gain
   private masterGain: GainNode | null = null;
 
@@ -191,6 +198,39 @@ export class SoundEngine {
       this.nitroSource.connect(this.nitroFilter);
       this.nitroSource.start();
 
+      // ----------------------------------------------------
+      // F. Apex Curb Rumble Strip Synthesizer
+      // ----------------------------------------------------
+      this.curbOsc = this.ctx.createOscillator();
+      this.curbOsc.type = 'sawtooth';
+      this.curbOsc.frequency.setValueAtTime(65, this.ctx.currentTime);
+
+      this.curbFilter = this.ctx.createBiquadFilter();
+      this.curbFilter.type = 'lowpass';
+      this.curbFilter.frequency.setValueAtTime(140, this.ctx.currentTime);
+
+      this.curbGain = this.ctx.createGain();
+      this.curbGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
+      this.curbOsc.connect(this.curbFilter);
+      this.curbFilter.connect(this.curbGain);
+      this.curbGain.connect(this.masterGain);
+      this.curbOsc.start();
+
+      // ----------------------------------------------------
+      // G. High-Performance Carbon Ceramic Brake Squeal
+      // ----------------------------------------------------
+      this.brakeSquealOsc = this.ctx.createOscillator();
+      this.brakeSquealOsc.type = 'sine';
+      this.brakeSquealOsc.frequency.setValueAtTime(2850, this.ctx.currentTime);
+
+      this.brakeSquealGain = this.ctx.createGain();
+      this.brakeSquealGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
+      this.brakeSquealOsc.connect(this.brakeSquealGain);
+      this.brakeSquealGain.connect(this.masterGain);
+      this.brakeSquealOsc.start();
+
       this.isInitialized = true;
     } catch (e) {
       console.warn('[SoundEngine] AudioContext init failed:', e);
@@ -210,7 +250,15 @@ export class SoundEngine {
     return curve;
   }
 
-  public update(rpm: number, speedKmh: number, isDrifting: boolean, isNitro: boolean, throttle: number = 0) {
+  public update(
+    rpm: number,
+    speedKmh: number,
+    isDrifting: boolean,
+    isNitro: boolean,
+    throttle: number = 0,
+    isOnCurb: boolean = false,
+    isBraking: boolean = false
+  ) {
     if (!this.ctx || !this.isInitialized || this.isMuted) return;
 
     if (this.ctx.state === 'suspended') {
@@ -301,6 +349,28 @@ export class SoundEngine {
         this.nitroFilter.frequency.setTargetAtTime(1700, now, 0.05);
       } else {
         this.nitroGain.gain.setTargetAtTime(0, now, 0.1);
+      }
+    }
+
+    // 8. Apex Curb Rumble Strip ("th-th-th-th-th")
+    if (this.curbGain && this.curbOsc) {
+      if (isOnCurb && speedKmh > 20) {
+        const curbPitch = 55 + (speedKmh / 220) * 45;
+        this.curbOsc.frequency.setTargetAtTime(curbPitch, now, 0.03);
+        const rumbleAmp = 0.22 + Math.sin(now * (speedKmh * 0.4)) * 0.08;
+        this.curbGain.gain.setTargetAtTime(rumbleAmp, now, 0.03);
+      } else {
+        this.curbGain.gain.setTargetAtTime(0, now, 0.06);
+      }
+    }
+
+    // 9. Carbon-Ceramic Performance Brake Squeal
+    if (this.brakeSquealGain && this.brakeSquealOsc) {
+      if (isBraking && speedKmh > 75) {
+        const brakeIntensity = Math.min(1.0, (speedKmh - 75) / 130);
+        this.brakeSquealGain.gain.setTargetAtTime(0.045 * brakeIntensity, now, 0.08);
+      } else {
+        this.brakeSquealGain.gain.setTargetAtTime(0, now, 0.12);
       }
     }
   }

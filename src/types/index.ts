@@ -20,6 +20,7 @@ export interface VehicleTelemetry {
   isAirborne: boolean;
   isJumping: boolean;   // Asphalt 9 cinematic jump active
   health: number;       // 0 to 100
+  isOnCurb?: boolean;   // Wheels riding red/white rumble strip
 }
 
 export interface PeerMessage {
