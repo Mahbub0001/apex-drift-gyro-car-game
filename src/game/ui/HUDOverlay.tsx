@@ -2,7 +2,7 @@ import React from 'react';
 import * as THREE from 'three';
 import { VehicleTelemetry, ControllerInput, TrafficCarState, RemotePlayerState } from '../../types';
 import { Minimap } from './Minimap';
-import { Flame, Camera, Zap } from 'lucide-react';
+import { Flame, Camera, Zap, ShieldAlert } from 'lucide-react';
 
 interface HUDOverlayProps {
   telemetry: VehicleTelemetry;
@@ -114,8 +114,26 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
         />
       </div>
 
-      {/* 4. Bottom Right: Tachometer, Speedometer & Nitro */}
+      {/* 4. Bottom Right: Tachometer, Speedometer, Damage & Nitro */}
       <div className="absolute bottom-6 right-6 flex flex-col items-end">
+        {/* Car Damage / Health Integrity Bar */}
+        <div className="w-56 glass-panel p-2 rounded-xl border border-white/10 mb-2 flex items-center space-x-2">
+          <ShieldAlert className={`w-3.5 h-3.5 ${telemetry.health < 40 ? 'text-rose-400 animate-pulse' : telemetry.health < 75 ? 'text-amber-400' : 'text-emerald-400'}`} />
+          <div className="flex-1 bg-white/10 h-1.5 rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all duration-150 ${
+                telemetry.health < 40
+                  ? 'bg-rose-500'
+                  : telemetry.health < 75
+                  ? 'bg-amber-400'
+                  : 'bg-emerald-400'
+              }`}
+              style={{ width: `${telemetry.health}%` }}
+            />
+          </div>
+          <span className="text-[11px] font-mono font-bold text-gray-300">{telemetry.health}% HP</span>
+        </div>
+
         {/* Nitro Gauge */}
         <div className="w-56 glass-panel p-2 rounded-xl border border-white/10 mb-3 flex items-center space-x-2">
           <Flame className={`w-4 h-4 ${input.nitro ? 'text-purple-400 animate-pulse' : 'text-cyan-400'}`} />

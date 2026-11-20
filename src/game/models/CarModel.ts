@@ -9,9 +9,10 @@ export interface CarMeshes {
   wheels: THREE.Object3D[];
   frontWheels: THREE.Object3D[];
   carConfig: SuperCarConfig;
+  applyDamageVisuals: (health: number) => void;
 }
 
-// Global cached GLTF model to avoid re-fetching on every car switch
+// Global cached GLTF model to avoid re-fetching
 let cachedGltfScene: THREE.Group | null = null;
 let gltfLoadingPromise: Promise<THREE.Group> | null = null;
 
@@ -34,7 +35,6 @@ function loadFerrariGltf(): Promise<THREE.Group> {
     loader.load(
       '/models/car.glb',
       (gltf) => {
-        // The car is child 0 inside scene
         const model = gltf.scene.children[0] || gltf.scene;
         cachedGltfScene = model as THREE.Group;
         console.log('[CarModel] Successfully loaded high-poly Ferrari 458 GLTF model with Draco');
@@ -75,7 +75,7 @@ export function createSportsCar(
 
   const carbonMaterial = new THREE.MeshStandardMaterial({
     color: 0x18181c,
-    metalness: 0.8,
+    metalness: 0.85,
     roughness: 0.35
   });
 
@@ -92,20 +92,44 @@ export function createSportsCar(
   const wheels: THREE.Object3D[] = [];
   const frontWheels: THREE.Object3D[] = [];
 
-  // Temporary sleek procedural placeholder while GLB initializes
+  let frontSplitterRef: THREE.Mesh | null = null;
+  let rearWingRef: THREE.Group | null = null;
+
+  // Placeholder while GLB initializes
   const placeholder = buildHighDetailProceduralCar(carConfig, bodyMaterial, carbonMaterial, glassMaterial, wheels, frontWheels);
   root.add(placeholder);
+
+  // Apply Realtime Visible Damage
+  const applyDamageVisuals = (health: number) => {
+    const damagePercent = Math.max(0, Math.min(100, health));
+    const damageFactor = (100 - damagePercent) / 100; // 0.0 (pristine) to 1.0 (wrecked)
+
+    // 1. Body paint scratches and dulling
+    bodyMaterial.roughness = 0.12 + damageFactor * 0.45;
+    bodyMaterial.clearcoat = Math.max(0.2, 1.0 - damageFactor * 0.8);
+
+    // 2. Physical Front Splitter Droop from collisions
+    if (frontSplitterRef) {
+      frontSplitterRef.rotation.x = -damageFactor * 0.18;
+      frontSplitterRef.position.y = 0.12 - damageFactor * 0.08;
+    }
+
+    // 3. Rear GT Wing Tilt / Looseness from impacts
+    if (rearWingRef) {
+      rearWingRef.rotation.z = (Math.sin(damageFactor * 5) * 0.08) * damageFactor;
+      rearWingRef.rotation.x = -0.12 - damageFactor * 0.15;
+    }
+  };
 
   // Load and apply authentic high-poly 3D sports car model
   loadFerrariGltf()
     .then((baseModel) => {
-      // Clone the car model for this instance
       const carModel = baseModel.clone(true);
       carModel.scale.set(0.95, 0.95, 0.95);
       carModel.rotation.y = Math.PI; // Face forward along +Z axis
       carModel.position.set(0, 0, 0);
 
-      // Apply tailored materials per car config
+      // Tailored materials per car
       carModel.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -124,7 +148,7 @@ export function createSportsCar(
         }
       });
 
-      // Ground Ambient Shadow Texture (Ferrari AO map)
+      // Ground Ambient Occlusion Shadow
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load('/models/ferrari_ao.png', (aoTexture) => {
         const shadowMesh = new THREE.Mesh(
@@ -156,8 +180,10 @@ export function createSportsCar(
         frontWheels.push(wheelFL, wheelFR);
       }
 
-      // Add Custom Aerodynamic GT Wings matching the user's reference image
-      attachCustomAero(carModel, carConfig, carbonMaterial, bodyMaterial);
+      // Add Custom Aerodynamic GT Wings
+      const aero = attachCustomAero(carModel, carConfig, carbonMaterial, bodyMaterial);
+      frontSplitterRef = aero.splitter;
+      rearWingRef = aero.wing;
 
       // Swap out placeholder with authentic 3D car model
       root.remove(placeholder);
@@ -168,7 +194,8 @@ export function createSportsCar(
         bodyMaterial,
         wheels,
         frontWheels,
-        carConfig
+        carConfig,
+        applyDamageVisuals
       });
     })
     .catch((err) => {
@@ -178,7 +205,8 @@ export function createSportsCar(
         bodyMaterial,
         wheels,
         frontWheels,
-        carConfig
+        carConfig,
+        applyDamageVisuals
       });
     });
 
@@ -187,32 +215,33 @@ export function createSportsCar(
     bodyMaterial,
     wheels,
     frontWheels,
-    carConfig
+    carConfig,
+    applyDamageVisuals
   };
 }
 
-// Attaches distinct aerodynamic packages (GT3 swan-neck wings, hypercar splitters) matching the user's 5 cars
+// Attaches distinct aerodynamic packages (GT3 swan-neck wings, hypercar splitters)
 function attachCustomAero(
   carModel: THREE.Object3D,
   config: SuperCarConfig,
   carbonMat: THREE.Material,
   bodyMat: THREE.Material
-) {
-  // Reference car positions: in carModel space (car is rotated by PI, so +Z in carModel is the rear)
-  // Let's create high-downforce GT wings based on car type
-  if (config.id === 'raptor' || config.id === 'spark' || config.id === 'titan' || config.id === 'apex') {
-    const wingGroup = new THREE.Group();
+): { wing: THREE.Group | null; splitter: THREE.Mesh | null } {
+  let wingGroup: THREE.Group | null = null;
+  let splitter: THREE.Mesh | null = null;
 
-    // Wing height & style tailored to each supercar
+  if (config.id === 'raptor' || config.id === 'spark' || config.id === 'titan' || config.id === 'apex') {
+    wingGroup = new THREE.Group();
+
     const wingY = config.id === 'spark' ? 1.05 : config.id === 'titan' ? 1.15 : 0.98;
     const wingWidth = config.id === 'titan' ? 1.95 : 1.82;
-    const wingZ = 1.85; // Rear deck of the Ferrari
+    const wingZ = 1.85;
 
     // Carbon fiber main blade
     const bladeGeo = new THREE.BoxGeometry(wingWidth, 0.04, 0.35);
     const blade = new THREE.Mesh(bladeGeo, carbonMat);
     blade.position.set(0, wingY, wingZ);
-    blade.rotation.x = -0.12; // Downforce angle of attack
+    blade.rotation.x = -0.12;
     blade.castShadow = true;
     wingGroup.add(blade);
 
@@ -237,19 +266,21 @@ function attachCustomAero(
     carModel.add(wingGroup);
   }
 
-  // Front splitter for TITAN and SPARK
-  if (config.id === 'titan' || config.id === 'spark') {
-    const splitter = new THREE.Mesh(
+  // Front splitter
+  if (config.id === 'titan' || config.id === 'spark' || config.id === 'raptor') {
+    splitter = new THREE.Mesh(
       new THREE.BoxGeometry(1.9, 0.04, 0.35),
       carbonMat
     );
-    splitter.position.set(0, 0.12, -2.15); // Front bumper
+    splitter.position.set(0, 0.12, -2.15);
     splitter.castShadow = true;
     carModel.add(splitter);
   }
+
+  return { wing: wingGroup, splitter };
 }
 
-// Procedural fallback with curved sports car silhouette
+// Procedural fallback
 function buildHighDetailProceduralCar(
   config: SuperCarConfig,
   bodyMat: THREE.Material,
@@ -260,14 +291,12 @@ function buildHighDetailProceduralCar(
 ): THREE.Group {
   const car = new THREE.Group();
 
-  // Monocoque body
   const bodyGeo = new THREE.BoxGeometry(1.9, 0.45, 4.3);
   const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
   bodyMesh.position.y = 0.35;
   bodyMesh.castShadow = true;
   car.add(bodyMesh);
 
-  // Curved Cockpit Greenhouse
   const cabinGeo = new THREE.SphereGeometry(1.0, 16, 12);
   cabinGeo.scale(0.72, 0.45, 1.3);
   const cabinMesh = new THREE.Mesh(cabinGeo, glassMat);
@@ -275,7 +304,6 @@ function buildHighDetailProceduralCar(
   cabinMesh.castShadow = true;
   car.add(cabinMesh);
 
-  // Wheels
   const wheelPositions = [
     { x: -0.92, y: 0.34, z: 1.35, isFront: true },
     { x: 0.92, y: 0.34, z: 1.35, isFront: true },

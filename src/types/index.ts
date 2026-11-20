@@ -29,7 +29,7 @@ export interface PeerMessage {
 
 export interface TrafficCarState {
   id: string;
-  type: 'sedan' | 'suv' | 'truck';
+  type: 'sedan' | 'suv' | 'truck' | 'van';
   position: [number, number, number];
   rotation: [number, number, number];
   speed: number;

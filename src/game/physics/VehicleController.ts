@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ControllerInput, VehicleTelemetry } from '../../types';
 
 export class VehiclePhysics {
-  public position: THREE.Vector3 = new THREE.Vector3(0, 0.42, 10);
+  public position: THREE.Vector3 = new THREE.Vector3(0, 0.64, 10);
   public velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   public rotation: THREE.Euler = new THREE.Euler(0, 0, 0, 'YXZ');
   public quaternion: THREE.Quaternion = new THREE.Quaternion();
@@ -39,7 +39,7 @@ export class VehiclePhysics {
   // Collision state
   public hadBarrierCollision: boolean = false;
 
-  constructor(initialPosition: THREE.Vector3 = new THREE.Vector3(0, 0.42, 10)) {
+  constructor(initialPosition: THREE.Vector3 = new THREE.Vector3(0, 0.64, 10)) {
     this.position.copy(initialPosition);
   }
 

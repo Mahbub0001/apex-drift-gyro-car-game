@@ -28,7 +28,7 @@ export class GameEngine {
   public nearMissActive: boolean = false;
   private nearMissTimer: number = 0;
 
-  // Collision callback to trigger sound
+  // Collision callback to trigger audio
   public onCrashCallback?: (severity: number) => void;
 
   // Remote Multiplayer Opponents
@@ -39,13 +39,18 @@ export class GameEngine {
   private cameraTarget: THREE.Vector3 = new THREE.Vector3();
   private baseFov: number = 60;
 
-  // Camera Shake
-  private cameraShakeTimer: number = 0;
-  private cameraShakeIntensity: number = 0;
+  // NFS-Style Damped Elastic Impact Camera
+  private crashImpulseDir: THREE.Vector3 = new THREE.Vector3();
+  private crashImpulseTimer: number = 0;
+  private crashImpulseIntensity: number = 0;
 
   // Nitro Flames
   private nitroFlameL: THREE.Mesh | null = null;
   private nitroFlameR: THREE.Mesh | null = null;
+
+  // Radiator Steam / Damage Smoke System
+  private damageSmokePuffs: THREE.Mesh[] = [];
+  private dirSunLight: THREE.DirectionalLight | null = null;
 
   public isLetterboxed: boolean = false;
 
@@ -57,7 +62,7 @@ export class GameEngine {
 
     // 1. Scene & Renderer Setup
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x90c4f8);
+    this.scene.background = new THREE.Color(0x8bc0f8);
     this.scene.fog = new THREE.FogExp2(0xa0d0f5, 0.001);
 
     this.camera = new THREE.PerspectiveCamera(this.baseFov, width / height, 0.2, 2000);
@@ -94,7 +99,7 @@ export class GameEngine {
     this.trafficManager = new TrafficManager(this.scene, this.track.splineCurve);
 
     // 5. Local Player Car
-    this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.42, 10));
+    this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.64, 10));
     this.vehiclePhysics.maxSpeedKmh = carConfig.topSpeedKmh;
     this.vehiclePhysics.accelerationRate = carConfig.accelerationRate;
 
@@ -104,6 +109,7 @@ export class GameEngine {
     });
     this.scene.add(this.carMeshes.root);
     this.setupNitroFlames();
+    this.setupDamageSmoke();
   }
 
   // Dual Exhaust Nitro Jet Flames
@@ -113,7 +119,7 @@ export class GameEngine {
     }
 
     const flameGeo = new THREE.ConeGeometry(0.08, 0.55, 12);
-    flameGeo.rotateX(Math.PI / 2); // Point backward
+    flameGeo.rotateX(Math.PI / 2);
 
     const flameMat = new THREE.MeshBasicMaterial({
       color: 0x00f2fe,
@@ -131,6 +137,23 @@ export class GameEngine {
     this.nitroFlameR.visible = false;
 
     this.carMeshes.root.add(this.nitroFlameL, this.nitroFlameR);
+  }
+
+  // Radiator Steam / Damage Smoke System
+  private setupDamageSmoke() {
+    const smokeMat = new THREE.MeshStandardMaterial({
+      color: 0xdde2e6,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.9
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), smokeMat);
+      puff.visible = false;
+      this.scene.add(puff);
+      this.damageSmokePuffs.push(puff);
+    }
   }
 
   public setCar(carConfig: SuperCarConfig) {
@@ -180,9 +203,11 @@ export class GameEngine {
     });
   }
 
-  public triggerCameraShake(intensity: number = 0.45, duration: number = 0.35) {
-    this.cameraShakeIntensity = intensity;
-    this.cameraShakeTimer = duration;
+  // Natural Need For Speed Damped Directional Impact (Smooth spring, not random vibration)
+  public triggerNfsImpact(normalX: number, normalZ: number, intensity: number = 1.0) {
+    this.crashImpulseDir.set(normalX, 0, normalZ).normalize();
+    this.crashImpulseIntensity = THREE.MathUtils.clamp(intensity * 0.22, 0.1, 0.32);
+    this.crashImpulseTimer = 0.28;
   }
 
   public update(delta: number, input: ControllerInput): VehicleTelemetry {
@@ -200,7 +225,7 @@ export class GameEngine {
       }
     }
 
-    // 3. Update Vehicle Physics with Highway Elevation & Road Bounds
+    // 3. Update Vehicle Physics with Highway Elevation & Closest Track Bounds
     const telemetry = this.vehiclePhysics.update(
       delta,
       input,
@@ -208,10 +233,10 @@ export class GameEngine {
       (x, z) => this.track.getClosestSplinePoint(x, z)
     );
 
-    // Guardrail collision reaction
+    // Guardrail scrape collision
     if (this.vehiclePhysics.hadBarrierCollision) {
-      this.triggerCameraShake(0.3, 0.2);
-      this.onCrashCallback?.(0.5);
+      this.triggerNfsImpact(-Math.sign(input.steer || 1), 0, 0.45);
+      this.onCrashCallback?.(0.4);
     }
 
     // 4. Update Dynamic Civilian Traffic AI with Solid Physical Impact
@@ -222,8 +247,8 @@ export class GameEngine {
       (normalX, normalZ, impactSpeedKmh) => {
         // Physical collision impact
         this.vehiclePhysics.applyObstacleCollision(normalX, normalZ, impactSpeedKmh);
-        this.triggerCameraShake(0.65, 0.4);
-        this.onCrashCallback?.(impactSpeedKmh / 100);
+        this.triggerNfsImpact(normalX, normalZ, impactSpeedKmh / 120);
+        this.onCrashCallback?.(impactSpeedKmh / 95);
       },
       () => {
         this.nearMissActive = true;
@@ -250,10 +275,46 @@ export class GameEngine {
       });
     });
 
-    // 6. Sync Local 3D Car Mesh with Physics
+    // 6. Sync Local 3D Car Mesh with Physics & Realtime Damage
     const { root, wheels, frontWheels } = this.carMeshes;
     root.position.copy(this.vehiclePhysics.position);
     root.quaternion.copy(this.vehiclePhysics.quaternion);
+
+    // Apply Realtime Visible Damage to Car Mesh
+    this.carMeshes.applyDamageVisuals(telemetry.health);
+
+    // Radiator Steam / Engine Damage Smoke
+    if (telemetry.health < 80) {
+      const now = performance.now() * 0.003;
+      const hoodWorldPos = this.vehiclePhysics.position.clone().add(
+        new THREE.Vector3(
+          Math.sin(this.vehiclePhysics.rotation.y) * 1.6,
+          0.6,
+          Math.cos(this.vehiclePhysics.rotation.y) * 1.6
+        )
+      );
+
+      this.damageSmokePuffs.forEach((puff, idx) => {
+        puff.visible = true;
+        const phase = (now + idx * 0.4) % 1.5;
+        puff.position.set(
+          hoodWorldPos.x + (Math.sin(idx * 2 + now) * 0.2),
+          hoodWorldPos.y + phase * 1.2,
+          hoodWorldPos.z + (Math.cos(idx * 2 + now) * 0.2)
+        );
+        const scale = 0.5 + phase * 1.2;
+        puff.scale.setScalar(scale);
+
+        // Darker smoke if critical health
+        const mat = puff.material as THREE.MeshStandardMaterial;
+        mat.opacity = Math.max(0, (1.0 - phase / 1.5) * (telemetry.health < 40 ? 0.7 : 0.35));
+        mat.color.setHex(telemetry.health < 40 ? 0x222225 : 0xdde2e6);
+      });
+    } else {
+      this.damageSmokePuffs.forEach((puff) => {
+        puff.visible = false;
+      });
+    }
 
     // Wheel Animation
     const forwardSpeed = this.vehiclePhysics.velocity.z;
@@ -279,7 +340,7 @@ export class GameEngine {
       }
     }
 
-    // 8. Asphalt 9-Style Dynamic Camera Choreography
+    // 8. Dynamic Camera Choreography (Always Upright!)
     this.updateCamera(delta, telemetry, input);
 
     // 9. Render Scene
@@ -359,13 +420,15 @@ export class GameEngine {
       this.camera.lookAt(this.cameraTarget);
     }
 
-    // Apply Camera Shake on Impact / Crash
-    if (this.cameraShakeTimer > 0) {
-      this.cameraShakeTimer -= delta;
-      const shakeX = (Math.random() - 0.5) * this.cameraShakeIntensity;
-      const shakeY = (Math.random() - 0.5) * this.cameraShakeIntensity;
-      this.camera.position.x += shakeX;
-      this.camera.position.y += shakeY;
+    // Apply NFS-Style Natural Damped Elastic Impact (Smooth mechanical jolt, no random vibration)
+    if (this.crashImpulseTimer > 0) {
+      this.crashImpulseTimer -= delta;
+      const progress = 1.0 - (this.crashImpulseTimer / 0.28);
+      const spring = Math.sin(progress * Math.PI * 3.5) * (1.0 - progress) * this.crashImpulseIntensity;
+      this.camera.position.x += this.crashImpulseDir.x * spring;
+      this.camera.position.z += this.crashImpulseDir.z * spring;
+      this.camera.fov -= spring * 4.5;
+      this.camera.updateProjectionMatrix();
     }
   }
 
@@ -378,6 +441,11 @@ export class GameEngine {
   }
 
   public dispose() {
+    this.damageSmokePuffs.forEach((puff) => {
+      this.scene.remove(puff);
+      puff.geometry.dispose();
+      (puff.material as THREE.Material).dispose();
+    });
     this.renderer.dispose();
   }
 }

@@ -18,20 +18,24 @@ export class HighwayTrack {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
 
-    // 1. British Countryside Highway Spline
+    // 1. Winding British Countryside Highway Spline
     const points = [
+      new THREE.Vector3(0, 0, -40),
       new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(15, 0.5, 80),
-      new THREE.Vector3(-25, 2.0, 180),
-      new THREE.Vector3(-55, 4.0, 300), // Sweeping left curve
-      new THREE.Vector3(-30, 7.5, 420), // Hill climb
-      new THREE.Vector3(15, 11.0, 520), // Crest with Stunt Jump Ramp
-      new THREE.Vector3(60, 5.5, 640),  // Downhill curve
-      new THREE.Vector3(40, 2.0, 760),
-      new THREE.Vector3(-15, 1.0, 880), // S-curve through autumn trees
-      new THREE.Vector3(-40, 2.5, 1000),
-      new THREE.Vector3(-10, 0.5, 1120),
-      new THREE.Vector3(0, 0.0, 1250)   // Final sprint to finish
+      new THREE.Vector3(0, 0, 60),      // Starting straight
+      new THREE.Vector3(0, 0, 140),     // Straight through start archway (which is at z=50)
+      new THREE.Vector3(18, 0.5, 240),  // Smooth sweeping right
+      new THREE.Vector3(-25, 2.0, 360), // Sweeping left
+      new THREE.Vector3(-55, 4.0, 480), // Highway bend
+      new THREE.Vector3(-30, 7.5, 600), // Countryside hill
+      new THREE.Vector3(15, 11.0, 720), // Stunt jump ramp crest
+      new THREE.Vector3(60, 5.5, 840),  // Downhill wide sweep
+      new THREE.Vector3(40, 2.0, 960),
+      new THREE.Vector3(-15, 1.0, 1080),// S-curve through forest
+      new THREE.Vector3(-40, 2.5, 1200),
+      new THREE.Vector3(-10, 0.5, 1320),
+      new THREE.Vector3(0, 0.0, 1440),  // Final straightaway
+      new THREE.Vector3(0, 0.0, 1500)
     ];
 
     this.splineCurve = new THREE.CatmullRomCurve3(points);
@@ -45,8 +49,11 @@ export class HighwayTrack {
     this.buildTerrain();
     this.buildRoad();
     this.buildArmcoGuardrails();
+    this.buildDistantMountains();
+    this.buildFluffyClouds();
     this.buildTrackArchitecture();
     this.buildAutumnTrees();
+    this.buildRoadsideBoulders();
     this.buildJumpRamps();
 
     this.scene.add(this.trackGroup);
@@ -84,7 +91,7 @@ export class HighwayTrack {
 
   // 1. Golden Hour Autumn Sky & Directional Lighting
   private setupAtmosphere() {
-    this.scene.background = new THREE.Color(0x90c4f8);
+    this.scene.background = new THREE.Color(0x8bc0f8);
 
     // Sky Dome
     const sky = new Sky();
@@ -93,8 +100,8 @@ export class HighwayTrack {
 
     const sun = new THREE.Vector3();
     const uniforms = sky.material.uniforms;
-    uniforms['turbidity'].value = 3.5;
-    uniforms['rayleigh'].value = 1.1;
+    uniforms['turbidity'].value = 3.2;
+    uniforms['rayleigh'].value = 1.05;
     uniforms['mieCoefficient'].value = 0.005;
     uniforms['mieDirectionalG'].value = 0.8;
 
@@ -105,11 +112,11 @@ export class HighwayTrack {
     sun.setFromSphericalCoords(1, phi, theta);
     uniforms['sunPosition'].value.copy(sun);
 
-    // Balanced Photographic Lighting (Prevents blown-out whiteout)
+    // Natural Balanced Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
     this.scene.add(ambientLight);
 
-    // Directional Sunlight
+    // Directional Sunlight with Soft Shadows
     const dirLight = new THREE.DirectionalLight(0xfffaed, 1.8);
     dirLight.position.set(100, 140, 100);
     dirLight.castShadow = true;
@@ -125,36 +132,90 @@ export class HighwayTrack {
     dirLight.shadow.bias = -0.0004;
     this.scene.add(dirLight);
 
-    // Natural Sky & Grass Bounce
+    // Hemisphere bounce
     const hemiLight = new THREE.HemisphereLight(0x7ec8f8, 0x2e5c1e, 0.55);
     this.scene.add(hemiLight);
   }
 
-  // 2. Rolling British Hills Contouring Along the Spline Roadbed
+  // 2. Distant Majestic Mountain Ranges on the Horizon
+  private buildDistantMountains() {
+    const mountainMat = new THREE.MeshStandardMaterial({
+      color: 0x4a5d6e, // Slate blue mountain haze
+      roughness: 0.95,
+      metalness: 0.05
+    });
+
+    const mountainGroup = new THREE.Group();
+
+    // Ring of 28 distant mountain peaks safely outside the play area
+    for (let i = 0; i < 28; i++) {
+      const angle = (i / 28) * Math.PI * 2;
+      const radius = 680 + Math.random() * 120;
+      const mx = Math.cos(angle) * radius;
+      const mz = 700 + Math.sin(angle) * radius;
+
+      // Ensure mountain is at least 300m away from any track point
+      const { dist } = this.getClosestSplinePoint(mx, mz);
+      if (dist < 300) continue;
+
+      const peakHeight = 110 + Math.random() * 110;
+      const baseRadius = 110 + Math.random() * 50;
+
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(baseRadius, peakHeight, 8), mountainMat);
+      cone.position.set(mx, peakHeight * 0.42, mz);
+      mountainGroup.add(cone);
+    }
+
+    this.trackGroup.add(mountainGroup);
+  }
+
+  // 3. Volumetric Fluffy White Clouds in the Sky
+  private buildFluffyClouds() {
+    const cloudMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.9,
+      metalness: 0.0,
+      transparent: true,
+      opacity: 0.85
+    });
+
+    const cloudGroup = new THREE.Group();
+
+    for (let i = 0; i < 18; i++) {
+      const cx = (Math.random() - 0.5) * 800;
+      const cz = (Math.random() - 0.5) * 1200 + 625;
+      const cy = 110 + Math.random() * 45;
+
+      const cloud = new THREE.Group();
+      cloud.position.set(cx, cy, cz);
+
+      // Cloud puff clusters (3 to 5 overlapping spheres)
+      const puffs = 3 + Math.floor(Math.random() * 3);
+      for (let p = 0; p < puffs; p++) {
+        const radius = 18 + Math.random() * 14;
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 8), cloudMat);
+        sphere.position.set((p - puffs / 2) * 18, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 12);
+        cloud.add(sphere);
+      }
+
+      cloudGroup.add(cloud);
+    }
+
+    this.trackGroup.add(cloudGroup);
+  }
+
+  // 4. Rolling British Hills Contouring Along the Spline Roadbed
   private buildTerrain() {
-    const terrainGeo = new THREE.PlaneGeometry(1200, 1600, 90, 90);
+    const terrainGeo = new THREE.PlaneGeometry(1400, 1900, 100, 100);
     terrainGeo.rotateX(-Math.PI / 2);
-    // Align terrain center directly with the track span (0 to 1250m)
-    terrainGeo.translate(0, 0, 625);
+    terrainGeo.translate(0, 0, 720);
 
     const pos = terrainGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const vx = pos.getX(i);
       const vz = pos.getZ(i);
 
-      // Distance from this world vertex to the actual spline road
-      const { point, dist } = this.getClosestSplinePoint(vx, vz);
-
-      if (dist < 7.2) {
-        // Flat roadbed indentation under the asphalt road
-        pos.setY(i, point.y - 0.35);
-      } else {
-        // Rolling countryside rising on either side of the road
-        const flankDist = dist - 7.2;
-        const rolling = Math.sin(vx * 0.015) * Math.cos(vz * 0.01) * 7.0;
-        const elevation = point.y - 0.35 + flankDist * 0.11 + Math.max(-1.5, rolling);
-        pos.setY(i, elevation);
-      }
+      pos.setY(i, this.getElevationAt(vx, vz));
     }
     terrainGeo.computeVertexNormals();
 
@@ -170,7 +231,7 @@ export class HighwayTrack {
     this.trackGroup.add(terrain);
   }
 
-  // 3. Smooth Two-Lane Country Road with Visible Asphalt & Skid Marks
+  // 5. Smooth Two-Lane Country Road with Visible Asphalt, Cat's-Eyes & Rumble Strips
   private buildRoad() {
     const numSteps = 500;
     const roadWidth = 12.0;
@@ -180,7 +241,7 @@ export class HighwayTrack {
     const uvs: number[] = [];
     const indices: number[] = [];
 
-    // Road Texture Canvas (Asphalt + Red/White curbs + Center lines + Skid marks)
+    // Road Texture Canvas (Asphalt + Red/White Curbs + Double Yellow Dashes + Skid Marks)
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 1024;
@@ -190,13 +251,13 @@ export class HighwayTrack {
     ctx.fillStyle = '#1c1e23';
     ctx.fillRect(0, 0, 512, 1024);
 
-    // Asphalt Grain Texture
+    // Subtle Asphalt Grain Noise
     ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
     for (let i = 0; i < 5000; i++) {
       ctx.fillRect(Math.random() * 512, Math.random() * 1024, 2, 2);
     }
 
-    // Outer Red/White Racing Curbs
+    // Outer Red/White Racing Rumble Strip Curbs
     for (let y = 0; y < 1024; y += 64) {
       ctx.fillStyle = (y / 64) % 2 === 0 ? '#d90429' : '#ffffff';
       ctx.fillRect(0, y, 22, 64);
@@ -249,7 +310,6 @@ export class HighwayTrack {
       const left = point.clone().add(binormal.clone().multiplyScalar(roadWidth / 2));
       const right = point.clone().add(binormal.clone().multiplyScalar(-roadWidth / 2));
 
-      // Elevated +0.22m to ensure it sits visibly above the green terrain
       vertices.push(left.x, left.y + 0.22, left.z);
       vertices.push(right.x, right.y + 0.22, right.z);
 
@@ -272,9 +332,24 @@ export class HighwayTrack {
     const roadMesh = new THREE.Mesh(roadGeo, roadMat);
     roadMesh.receiveShadow = true;
     this.trackGroup.add(roadMesh);
+
+    // Reflective Cat's-Eye Road Studs along center line every 12 meters
+    const studGeo = new THREE.BoxGeometry(0.12, 0.04, 0.2);
+    const studMat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
+    const studGroup = new THREE.Group();
+
+    for (let t = 0; t <= 1.0; t += 0.01) {
+      const pt = this.splineCurve.getPoint(t);
+      const tang = this.splineCurve.getTangent(t);
+      const stud = new THREE.Mesh(studGeo, studMat);
+      stud.position.set(pt.x, pt.y + 0.24, pt.z);
+      stud.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tang);
+      studGroup.add(stud);
+    }
+    this.trackGroup.add(studGroup);
   }
 
-  // 4. Armco Galvanized Steel Crash Barriers
+  // 6. Armco Galvanized Steel Crash Barriers
   private buildArmcoGuardrails() {
     const numSteps = 300;
     const roadWidth = 12.0;
@@ -325,11 +400,11 @@ export class HighwayTrack {
     }
   }
 
-  // 5. Overhead Highway Gantries, Start Line Archway & Distance Boards
+  // 7. Overhead Highway Gantries, Start Line Archway & Distance Boards
   private buildTrackArchitecture() {
-    // A. Start Line Gantry Archway (at t = 0.038, z ~ 45m ahead of starting grid)
-    const startPt = this.splineCurve.getPoint(0.038);
-    const startTang = this.splineCurve.getTangent(0.038);
+    // A. Start Line Gantry Archway (at z = 50m straight across the starting grid)
+    const startPt = new THREE.Vector3(0, 0.22, 50);
+    const startTang = new THREE.Vector3(0, 0, 1);
 
     const archGroup = new THREE.Group();
     archGroup.position.copy(startPt);
@@ -338,14 +413,12 @@ export class HighwayTrack {
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1f242d, metalness: 0.8, roughness: 0.3 });
     const beamMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 });
 
-    // Left & Right Pillars
     const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6.5, 0.8), pillarMat);
     pillarL.position.set(-7.5, 3.25, 0);
     pillarL.castShadow = true;
     const pillarR = pillarL.clone();
     pillarR.position.x = 7.5;
 
-    // Crossbeam
     const crossbeam = new THREE.Mesh(new THREE.BoxGeometry(16.5, 1.4, 1.0), beamMat);
     crossbeam.position.set(0, 6.0, 0);
     crossbeam.castShadow = true;
@@ -367,7 +440,7 @@ export class HighwayTrack {
       new THREE.PlaneGeometry(14, 1.1),
       new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide })
     );
-    banner.rotation.y = Math.PI; // Face forwards towards approaching grid
+    banner.rotation.y = Math.PI; // Face approaching vehicles
     banner.position.set(0, 6.0, -0.52);
 
     archGroup.add(pillarL, pillarR, crossbeam, banner);
@@ -390,7 +463,6 @@ export class HighwayTrack {
       const beam = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.4, 0.4), pillarMat);
       beam.position.set(0, 6.5, 0);
 
-      // Highway Sign Board
       const signBoard = new THREE.Mesh(
         new THREE.BoxGeometry(6.5, 2.2, 0.15),
         new THREE.MeshStandardMaterial({ color: 0x007749, roughness: 0.4 })
@@ -400,12 +472,34 @@ export class HighwayTrack {
       gantry.add(pL, pR, beam, signBoard);
       this.trackGroup.add(gantry);
     }
+
+    // C. Trackside Distance Braking Boards before curves
+    const boardMat = new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.5 });
+    const textMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    [0.18, 0.195, 0.21, 0.48, 0.495, 0.51].forEach((tVal, idx) => {
+      const pt = this.splineCurve.getPoint(tVal);
+      const tang = this.splineCurve.getTangent(tVal);
+      const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
+
+      const boardGroup = new THREE.Group();
+      boardGroup.position.copy(pt).add(binormal.multiplyScalar(7.2));
+      boardGroup.position.y += 0.8;
+      boardGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tang);
+
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.08), boardMat);
+      const textStripe = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.2, 0.09), textMat);
+      textStripe.position.y = 0.2;
+
+      boardGroup.add(board, textStripe);
+      this.trackGroup.add(boardGroup);
+    });
   }
 
-  // 6. Lush Autumn Trees (Forza Horizon 4 Autumn Colors)
+  // 8. Natural Autumn Trees with Multi-Tier Foliage & Branching
   private buildAutumnTrees() {
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x382315, roughness: 0.92 });
-    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.45, 5.0, 10);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2719, roughness: 0.95 });
+    const trunkGeo = new THREE.CylinderGeometry(0.28, 0.48, 5.2, 10);
 
     const autumnColors = [
       0x9b2226, // Deep Crimson Maple
@@ -416,26 +510,30 @@ export class HighwayTrack {
       0x606c38  // Olive Moss
     ];
 
-    for (let i = 0; i < 240; i++) {
-      const t = Math.random();
+    for (let i = 0; i < 200; i++) {
+      const t = 0.02 + Math.random() * 0.96;
       const pt = this.splineCurve.getPoint(t);
       const tangent = this.splineCurve.getTangent(t);
       const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
 
       const side = Math.random() > 0.5 ? 1 : -1;
-      const distance = 9.5 + Math.random() * 38.0;
+      const distance = 9.8 + Math.random() * 32.0;
       const treePos = pt.clone().add(binormal.multiplyScalar(side * distance));
 
-      const groundY = Math.max(-0.2, this.getElevationAt(treePos.x, treePos.z) - 0.3);
+      const groundY = this.getElevationAt(treePos.x, treePos.z);
 
       const tree = new THREE.Group();
       tree.position.set(treePos.x, groundY, treePos.z);
+      tree.rotation.y = Math.random() * Math.PI * 2;
 
+      // Realistic Trunk with Natural Lean
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 2.5;
+      trunk.position.y = 2.6; // Trunk base rests directly on ground
+      trunk.rotation.z = (Math.random() - 0.5) * 0.08;
       trunk.castShadow = true;
       tree.add(trunk);
 
+      // Multi-layer organic foliage attached to the trunk
       const color = autumnColors[Math.floor(Math.random() * autumnColors.length)];
       const foliageMat = new THREE.MeshStandardMaterial({
         color,
@@ -443,17 +541,18 @@ export class HighwayTrack {
         metalness: 0.02
       });
 
-      const scale = 1.1 + Math.random() * 0.9;
-      const c1 = new THREE.Mesh(new THREE.SphereGeometry(1.8 * scale, 12, 10), foliageMat);
-      c1.position.set(0, 5.2 * scale, 0);
+      const scale = 1.05 + Math.random() * 0.95;
+
+      const c1 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.9 * scale, 1), foliageMat);
+      c1.position.set(0, 5.0 * scale, 0);
       c1.castShadow = true;
 
-      const c2 = new THREE.Mesh(new THREE.SphereGeometry(1.4 * scale, 10, 8), foliageMat);
-      c2.position.set(0.4 * scale, 6.4 * scale, 0.3 * scale);
+      const c2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4 * scale, 1), foliageMat);
+      c2.position.set(0.4 * scale, 6.2 * scale, 0.3 * scale);
       c2.castShadow = true;
 
-      const c3 = new THREE.Mesh(new THREE.SphereGeometry(1.5 * scale, 10, 8), foliageMat);
-      c3.position.set(-0.4 * scale, 5.8 * scale, -0.3 * scale);
+      const c3 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.5 * scale, 1), foliageMat);
+      c3.position.set(-0.4 * scale, 5.5 * scale, -0.3 * scale);
       c3.castShadow = true;
 
       tree.add(c1, c2, c3);
@@ -461,13 +560,46 @@ export class HighwayTrack {
     }
   }
 
-  // 7. Asphalt 9 Jump Ramp
+  // 9. Natural Granite Boulders & Rock Formations along Road Shoulders
+  private buildRoadsideBoulders() {
+    const rockMat = new THREE.MeshStandardMaterial({
+      color: 0x5a544c,
+      roughness: 0.95,
+      metalness: 0.05
+    });
+
+    const rockGroup = new THREE.Group();
+
+    for (let i = 0; i < 40; i++) {
+      const t = 0.04 + Math.random() * 0.92;
+      const pt = this.splineCurve.getPoint(t);
+      const tangent = this.splineCurve.getTangent(t);
+      const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+
+      const side = Math.random() > 0.5 ? 1 : -1;
+      const dist = 8.2 + Math.random() * 5.5;
+      const rockPos = pt.clone().add(binormal.multiplyScalar(side * dist));
+
+      const rockScale = 0.8 + Math.random() * 1.5;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rockScale, 1), rockMat);
+      const groundY = this.getElevationAt(rockPos.x, rockPos.z);
+      rock.position.set(rockPos.x, groundY + rockScale * 0.35, rockPos.z);
+      rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      rock.castShadow = true;
+      rockGroup.add(rock);
+    }
+
+    this.trackGroup.add(rockGroup);
+  }
+
+  // 10. Asphalt 9 Stunt Jump Ramp
   private buildJumpRamps() {
-    const rampPoint = this.splineCurve.getPoint(0.42);
-    const tangent = this.splineCurve.getTangent(0.42);
+    const rampT = 0.47;
+    const rampPoint = this.splineCurve.getPoint(rampT);
+    const tangent = this.splineCurve.getTangent(rampT);
 
     const rampGroup = new THREE.Group();
-    rampGroup.position.copy(rampPoint);
+    rampGroup.position.set(rampPoint.x, rampPoint.y + 0.22, rampPoint.z);
     rampGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
 
     const rampWidth = 6.0;
@@ -498,7 +630,7 @@ export class HighwayTrack {
     this.trackGroup.add(rampGroup);
 
     this.ramps.push({
-      position: rampPoint,
+      position: new THREE.Vector3(rampPoint.x, rampPoint.y + 0.22, rampPoint.z),
       width: rampWidth,
       length: rampLength,
       height: rampHeight
@@ -506,22 +638,34 @@ export class HighwayTrack {
   }
 
   public getRoadCenterAtZ(z: number): { x: number; y: number } {
-    const clampedZ = Math.max(0, Math.min(1250, z));
-    const t = clampedZ / 1250;
+    const clampedZ = Math.max(0, Math.min(1500, z));
+    const t = clampedZ / 1500;
     const pt = this.splineCurve.getPoint(t);
     return { x: pt.x, y: pt.y };
   }
 
   public getElevationAt(x: number, z: number): number {
-    const { point } = this.getClosestSplinePoint(x, z);
+    const { point, dist } = this.getClosestSplinePoint(x, z);
 
     for (const ramp of this.ramps) {
-      const dist = ramp.position.distanceTo(new THREE.Vector3(x, ramp.position.y, z));
-      if (dist < ramp.length * 0.6 && Math.abs(x - ramp.position.x) < ramp.width / 2) {
+      const d = ramp.position.distanceTo(new THREE.Vector3(x, ramp.position.y, z));
+      if (d < ramp.length * 0.6 && Math.abs(x - ramp.position.x) < ramp.width / 2) {
         return ramp.position.y + ramp.height;
       }
     }
 
-    return point.y;
+    if (dist < 6.5) {
+      // Direct asphalt road surface height
+      return point.y + 0.22;
+    } else if (dist < 8.5) {
+      // Soft transition from asphalt curb edge to ground
+      const t = (dist - 6.5) / 2.0;
+      return (point.y + 0.22) * (1 - t) + (point.y - 0.05) * t;
+    } else {
+      // Rolling meadow countryside
+      const flankDist = dist - 8.5;
+      const rolling = Math.sin(x * 0.012) * Math.cos(z * 0.009) * 3.5;
+      return point.y - 0.05 + Math.min(10.0, flankDist * 0.035) + rolling * Math.min(1.0, flankDist / 15.0);
+    }
   }
 }
