@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { GameEngine } from '../../game/core/Engine';
 import { HUDOverlay } from '../../game/ui/HUDOverlay';
+import { SoundEngine } from '../../game/audio/SoundEngine';
 import { WebRTCHost } from '../../services/webrtc';
 import { MultiplayerRoomManager } from '../../services/multiplayer';
 import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState } from '../../types';
 import QRCode from 'qrcode';
-import { QrCode, X, Users, Globe, Play } from 'lucide-react';
+import { QrCode, X, Users, Globe, Volume2, VolumeX } from 'lucide-react';
 
 interface GameViewProps {
   roomId: string;
@@ -17,6 +18,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const hostRef = useRef<WebRTCHost | null>(null);
+  const soundRef = useRef<SoundEngine | null>(null);
   const mpManagerRef = useRef<MultiplayerRoomManager | null>(null);
 
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
@@ -25,6 +27,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
   const [ping, setPing] = useState<number>(0);
   const [activeInputSource, setActiveInputSource] = useState<'gyro' | 'keyboard'>('keyboard');
+  const [isMuted, setIsMuted] = useState<boolean>(false);
 
   // Multiplayer Room State
   const [mpRoomCode, setMpRoomCode] = useState<string>(roomId);
@@ -62,6 +65,23 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
   const [isLetterboxed, setIsLetterboxed] = useState<boolean>(false);
   const [nearMissActive, setNearMissActive] = useState<boolean>(false);
 
+  // Initialize Sound Engine
+  useEffect(() => {
+    const sound = new SoundEngine();
+    soundRef.current = sound;
+    return () => {
+      sound.dispose();
+    };
+  }, []);
+
+  const toggleSound = () => {
+    if (soundRef.current) {
+      soundRef.current.init();
+      const muted = soundRef.current.toggleMute();
+      setIsMuted(muted);
+    }
+  };
+
   // Generate QR Code
   useEffect(() => {
     const controllerUrl = `${window.location.origin}/?mode=controller&room=${roomId}`;
@@ -79,6 +99,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
 
     host.init(
       (incomingInput) => {
+        soundRef.current?.init();
         setInputState(incomingInput);
         setActiveInputSource('gyro');
       },
@@ -104,7 +125,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
     mpManagerRef.current = mp;
 
     mp.init(asHost, {
-      onPlayerJoined: (player) => {
+      onPlayerJoined: () => {
         setOpponents(mp.getOpponentsList());
       },
       onPlayerLeft: () => {
@@ -129,6 +150,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
     const keys: Record<string, boolean> = {};
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      soundRef.current?.init();
       keys[e.code] = true;
       updateKeyboard();
     };
@@ -200,6 +222,14 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
       setTelemetry(currentTelemetry);
       setIsLetterboxed(engine.isLetterboxed);
       setNearMissActive(engine.nearMissActive);
+
+      // Update Procedural Sound Engine
+      soundRef.current?.update(
+        currentTelemetry.rpm,
+        currentTelemetry.speedKmh,
+        currentTelemetry.isDrifting,
+        inputState.nitro
+      );
 
       // Track positions for Minimap
       setPlayerPos(engine.vehiclePhysics.position.clone());
@@ -280,6 +310,14 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
         >
           <Users className="w-4 h-4 text-purple-400" />
           <span>{isMpConnected ? `Room: ${mpRoomCode} (${opponents.length + 1})` : 'Multiplayer'}</span>
+        </button>
+
+        <button
+          onClick={toggleSound}
+          className="p-2 glass-panel rounded-xl border border-white/10 text-gray-300 hover:text-white active:scale-95 transition-all pointer-events-auto"
+          title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+        >
+          {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
         </button>
       </div>
 
