@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as THREE from 'three';
 import { GameEngine } from '../../game/core/Engine';
 import { HUDOverlay } from '../../game/ui/HUDOverlay';
 import { WebRTCHost } from '../../services/webrtc';
-import { ControllerInput, VehicleTelemetry } from '../../types';
+import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState } from '../../types';
 import QRCode from 'qrcode';
-import { QrCode, X, Wifi } from 'lucide-react';
+import { QrCode, X } from 'lucide-react';
 
 interface GameViewProps {
   roomId: string;
   onExit?: () => void;
+  opponents?: RemotePlayerState[];
 }
 
-export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
+export const GameView: React.FC<GameViewProps> = ({ roomId, onExit, opponents = [] }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const hostRef = useRef<WebRTCHost | null>(null);
@@ -46,7 +48,11 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
     health: 100
   });
 
+  const [playerPos, setPlayerPos] = useState<THREE.Vector3>(new THREE.Vector3(0, 0.4, 10));
+  const [playerHeading, setPlayerHeading] = useState<number>(0);
+  const [trafficStates, setTrafficStates] = useState<TrafficCarState[]>([]);
   const [isLetterboxed, setIsLetterboxed] = useState<boolean>(false);
+  const [nearMissActive, setNearMissActive] = useState<boolean>(false);
 
   // Generate QR Code
   useEffect(() => {
@@ -157,6 +163,12 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
       const currentTelemetry = engine.update(delta, inputState);
       setTelemetry(currentTelemetry);
       setIsLetterboxed(engine.isLetterboxed);
+      setNearMissActive(engine.nearMissActive);
+
+      // Track positions for Minimap
+      setPlayerPos(engine.vehiclePhysics.position.clone());
+      setPlayerHeading(engine.vehiclePhysics.rotation.y);
+      setTrafficStates(engine.trafficStates);
 
       // Send telemetry back to connected mobile phone
       hostRef.current?.sendFeedback({
@@ -183,14 +195,22 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
       {/* 3D WebGL Canvas */}
       <canvas ref={canvasRef} className="w-full h-full block" />
 
-      {/* Modern In-Game Racing HUD */}
-      <HUDOverlay
-        telemetry={telemetry}
-        input={inputState}
-        isLetterboxed={isLetterboxed}
-        activeInputSource={activeInputSource}
-        ping={ping}
-      />
+      {/* Modern In-Game Racing HUD with Radar Minimap */}
+      {engineRef.current && (
+        <HUDOverlay
+          telemetry={telemetry}
+          input={inputState}
+          isLetterboxed={isLetterboxed}
+          activeInputSource={activeInputSource}
+          ping={ping}
+          playerPos={playerPos}
+          playerHeading={playerHeading}
+          splineCurve={engineRef.current.track.splineCurve}
+          traffic={trafficStates}
+          opponents={opponents}
+          nearMissActive={nearMissActive}
+        />
+      )}
 
       {/* Floating Gyro Connect Button (Top Left) */}
       <div className="absolute top-4 left-4 z-40">
