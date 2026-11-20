@@ -4,7 +4,7 @@ import { createSportsCar, CarMeshes } from '../models/CarModel';
 import { VehiclePhysics } from '../physics/VehicleController';
 import { HighwayTrack } from '../environment/Track';
 import { TrafficManager } from '../traffic/TrafficManager';
-import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState } from '../../types';
+import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState, SuperCarConfig, SUPER_CARS } from '../../types';
 
 interface OpponentCarEntity {
   id: string;
@@ -22,6 +22,7 @@ export class GameEngine {
   public carMeshes: CarMeshes;
   public track: HighwayTrack;
   public trafficManager: TrafficManager;
+  public currentCarConfig: SuperCarConfig;
 
   public trafficStates: TrafficCarState[] = [];
   public nearMissActive: boolean = false;
@@ -37,18 +38,19 @@ export class GameEngine {
 
   public isLetterboxed: boolean = false;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, carConfig: SuperCarConfig = SUPER_CARS[0]) {
     this.canvas = canvas;
+    this.currentCarConfig = carConfig;
     const width = canvas.clientWidth || window.innerWidth;
     const height = canvas.clientHeight || window.innerHeight;
 
     // 1. Scene & Renderer Setup
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x9cc3db, 0.0012); // Natural light atmospheric haze
+    this.scene.fog = new THREE.FogExp2(0x9cc3db, 0.0012);
 
     this.camera = new THREE.PerspectiveCamera(this.baseFov, width / height, 0.2, 2000);
     this.camera.position.set(0, 3, -8);
-    this.camera.up.set(0, 1, 0); // Always enforce upright Y-axis
+    this.camera.up.set(0, 1, 0);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -79,9 +81,24 @@ export class GameEngine {
     // 4. Traffic Obstacles AI Manager
     this.trafficManager = new TrafficManager(this.scene, this.track.splineCurve);
 
-    // 5. Local Player Car (Vibrant Candy Red Supra/Ferrari)
+    // 5. Local Player Car (Configured for Selected Supercar)
     this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.45, 10));
-    this.carMeshes = createSportsCar(0xd40000, (loadedMeshes) => {
+    this.vehiclePhysics.maxSpeedKmh = carConfig.topSpeedKmh;
+    this.vehiclePhysics.accelerationRate = carConfig.accelerationRate;
+
+    this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
+      this.carMeshes = loadedMeshes;
+    });
+    this.scene.add(this.carMeshes.root);
+  }
+
+  public setCar(carConfig: SuperCarConfig) {
+    this.currentCarConfig = carConfig;
+    this.vehiclePhysics.maxSpeedKmh = carConfig.topSpeedKmh;
+    this.vehiclePhysics.accelerationRate = carConfig.accelerationRate;
+
+    this.scene.remove(this.carMeshes.root);
+    this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       this.carMeshes = loadedMeshes;
     });
     this.scene.add(this.carMeshes.root);
@@ -93,7 +110,8 @@ export class GameEngine {
       let carEntity = this.opponentCars.get(opp.id);
       if (!carEntity) {
         const colorHex = parseInt((opp.color || '#a855f7').replace('#', '0x'), 16);
-        const meshes = createSportsCar(colorHex);
+        const oppConfig = { ...SUPER_CARS[0], bodyColorHex: colorHex };
+        const meshes = createSportsCar(oppConfig);
         this.scene.add(meshes.root);
 
         carEntity = {
@@ -191,9 +209,9 @@ export class GameEngine {
 
     // Nitro Visual Glow Shift
     if (input.nitro && telemetry.nitroFuel > 0 && input.throttle > 0.1) {
-      bodyMaterial.color.setHex(0x9900ff); // Electric Purple Nitro
+      bodyMaterial.color.setHex(0x9900ff);
     } else {
-      bodyMaterial.color.setHex(0xd40000); // Candy Red
+      bodyMaterial.color.setHex(this.currentCarConfig.bodyColorHex);
     }
 
     // 7. Asphalt 9-Style Dynamic Camera Choreography (Always Upright!)
@@ -209,25 +227,21 @@ export class GameEngine {
     const carPos = this.vehiclePhysics.position;
     const heading = this.vehiclePhysics.rotation.y;
 
-    // Forward direction vector
     const forwardX = Math.sin(heading);
     const forwardZ = Math.cos(heading);
 
-    // Dynamic FOV based on speed and nitro
     const speedRatio = Math.min(1, telemetry.speedKmh / 280);
     const targetFov = this.baseFov + (speedRatio * 15) + (input.nitro ? 8 : 0);
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, delta * 6);
     this.camera.updateProjectionMatrix();
 
     if (telemetry.isJumping) {
-      // --- ASPHALT 9 CINEMATIC JUMP CAM ---
       this.isLetterboxed = true;
 
-      // Low 3/4 Side tracking angle looking up at the airborne car
       const sideAngle = heading + 0.6;
       const jumpCamPos = new THREE.Vector3(
         carPos.x + Math.sin(sideAngle) * 5.8,
-        carPos.y + 0.6, // Low looking up
+        carPos.y + 0.6,
         carPos.z + Math.cos(sideAngle) * 5.8
       );
 
@@ -240,7 +254,6 @@ export class GameEngine {
     this.isLetterboxed = false;
 
     if (this.cameraMode === 'hood') {
-      // First-person Hood / Bumper View
       const hoodPos = new THREE.Vector3(
         carPos.x + forwardX * 1.5,
         carPos.y + 0.65,
@@ -255,8 +268,6 @@ export class GameEngine {
       );
       this.camera.lookAt(lookTarget);
     } else {
-      // --- CHASE CAM (Forza Horizon Style) ---
-      // Camera stays BEHIND the car looking forward
       const driftOffset = telemetry.isDrifting ? -input.steer * 0.9 : 0;
       const rightX = forwardZ;
       const rightZ = -forwardX;
@@ -269,7 +280,6 @@ export class GameEngine {
 
       this.camera.position.lerp(idealCamPos, Math.min(1, delta * 12));
 
-      // Look slightly ahead of car hood
       const targetLookAt = new THREE.Vector3(
         carPos.x + forwardX * 6.0,
         carPos.y + 0.8,

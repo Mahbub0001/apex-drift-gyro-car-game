@@ -2,11 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { DesktopHost } from './components/desktop/DesktopHost';
 import { MobileController } from './components/controller/MobileController';
 import { GameView } from './components/desktop/GameView';
+import { GarageView } from './components/desktop/GarageView';
+import { SUPER_CARS, SuperCarConfig } from './types';
 
 export const App: React.FC = () => {
   const [mode, setMode] = useState<'desktop' | 'controller'>('desktop');
-  const [gameState, setGameState] = useState<'lobby' | 'racing'>('racing'); // Default directly into racing action
+  const [gameState, setGameState] = useState<'garage' | 'racing'>('racing');
+  const [selectedCar, setSelectedCar] = useState<SuperCarConfig>(SUPER_CARS[0]); // Default to RAPTOR
   const [roomId, setRoomId] = useState<string>('APEX99');
+  const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -31,14 +35,27 @@ export const App: React.FC = () => {
     return <MobileController roomId={roomId} />;
   }
 
-  if (gameState === 'racing') {
-    return <GameView roomId={roomId} onExit={() => setGameState('lobby')} />;
+  if (gameState === 'garage') {
+    return (
+      <GarageView
+        selectedCar={selectedCar}
+        onSelectCar={(car) => {
+          setSelectedCar(car);
+          setGameState('racing');
+        }}
+        onOpenGyroModal={() => setGameState('racing')}
+        isPhoneConnected={isPhoneConnected}
+      />
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[#08090C] flex flex-col justify-center items-center p-4">
-      <DesktopHost roomId={roomId} onLaunchGame={() => setGameState('racing')} />
-    </div>
+    <GameView
+      roomId={roomId}
+      selectedCar={selectedCar}
+      onOpenGarage={() => setGameState('garage')}
+      onExit={() => setGameState('garage')}
+    />
   );
 };
 

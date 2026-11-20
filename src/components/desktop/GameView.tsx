@@ -5,16 +5,23 @@ import { HUDOverlay } from '../../game/ui/HUDOverlay';
 import { SoundEngine } from '../../game/audio/SoundEngine';
 import { WebRTCHost } from '../../services/webrtc';
 import { MultiplayerRoomManager } from '../../services/multiplayer';
-import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState } from '../../types';
+import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState, SuperCarConfig, SUPER_CARS } from '../../types';
 import QRCode from 'qrcode';
-import { QrCode, X, Users, Globe, Volume2, VolumeX } from 'lucide-react';
+import { QrCode, X, Users, Globe, Volume2, VolumeX, Warehouse } from 'lucide-react';
 
 interface GameViewProps {
   roomId: string;
   onExit?: () => void;
+  selectedCar?: SuperCarConfig;
+  onOpenGarage?: () => void;
 }
 
-export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
+export const GameView: React.FC<GameViewProps> = ({
+  roomId,
+  onExit,
+  selectedCar = SUPER_CARS[0],
+  onOpenGarage
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const hostRef = useRef<WebRTCHost | null>(null);
@@ -59,7 +66,7 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
     health: 100
   });
 
-  const [playerPos, setPlayerPos] = useState<THREE.Vector3>(new THREE.Vector3(0, 0.4, 10));
+  const [playerPos, setPlayerPos] = useState<THREE.Vector3>(new THREE.Vector3(0, 0.45, 10));
   const [playerHeading, setPlayerHeading] = useState<number>(0);
   const [trafficStates, setTrafficStates] = useState<TrafficCarState[]>([]);
   const [isLetterboxed, setIsLetterboxed] = useState<boolean>(false);
@@ -200,11 +207,18 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
     };
   }, []);
 
+  // Update Car if changed in Garage
+  useEffect(() => {
+    if (engineRef.current) {
+      engineRef.current.setCar(selectedCar);
+    }
+  }, [selectedCar]);
+
   // Three.js Game Loop
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const engine = new GameEngine(canvasRef.current);
+    const engine = new GameEngine(canvasRef.current, selectedCar);
     engineRef.current = engine;
 
     let lastTime = performance.now();
@@ -302,6 +316,14 @@ export const GameView: React.FC<GameViewProps> = ({ roomId, onExit }) => {
         >
           <QrCode className="w-4 h-4 text-cyan-400" />
           <span>{isPhoneConnected ? 'Gyro Connected' : 'Phone Gyro'}</span>
+        </button>
+
+        <button
+          onClick={onOpenGarage}
+          className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-amber-500/30 text-xs font-bold font-racing uppercase tracking-wider text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all pointer-events-auto"
+        >
+          <Warehouse className="w-4 h-4 text-amber-400" />
+          <span>Garage ({selectedCar.name})</span>
         </button>
 
         <button
