@@ -8,6 +8,170 @@ interface MobileControllerProps {
   roomId: string;
 }
 
+interface PhysicalWheelProps {
+  angleDegrees: number;
+  speedKmh: number;
+  gear: number | string;
+  rpm: number;
+  size?: number;
+}
+
+const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
+  angleDegrees,
+  speedKmh,
+  gear,
+  rpm,
+  size = 230
+}) => {
+  // 10-LED sequential shift light array: 4 Green, 3 Amber, 3 Red
+  const activeLeds = Math.min(10, Math.max(0, Math.floor(((rpm - 1500) / 7000) * 10)));
+  const isRedline = rpm >= 8000;
+
+  return (
+    <div
+      className="relative flex items-center justify-center select-none"
+      style={{ width: size, height: size }}
+    >
+      {/* Outer Glow Halo based on Steering */}
+      <div
+        className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-300"
+        style={{
+          boxShadow: `0 0 35px ${Math.abs(angleDegrees) > 10 ? 'rgba(0, 242, 254, 0.22)' : 'rgba(255, 255, 255, 0.06)'}`,
+        }}
+      />
+
+      {/* Graduation Arc Markings Behind Wheel (-90°, -45°, 0°, +45°, +90°) */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none opacity-40"
+        viewBox="0 0 240 240"
+      >
+        <circle
+          cx="120"
+          cy="120"
+          r="112"
+          fill="none"
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth="2"
+          strokeDasharray="4 8"
+        />
+        <line x1="120" y1="2" x2="120" y2="12" stroke="#00f2fe" strokeWidth="3" />
+        <line x1="38" y1="38" x2="45" y2="45" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
+        <line x1="202" y1="38" x2="195" y2="45" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
+        <line x1="8" y1="120" x2="18" y2="120" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
+        <line x1="232" y1="120" x2="222" y2="120" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
+      </svg>
+
+      {/* THE ROTATING PHYSICAL GT3 / SUPERCAR WHEEL */}
+      <div
+        className="relative w-full h-full rounded-full flex items-center justify-center transition-transform duration-75 will-change-transform"
+        style={{
+          transform: `rotate(${angleDegrees}deg)`,
+          transformOrigin: 'center center',
+          boxShadow: '0 16px 40px rgba(0,0,0,0.9), inset 0 2px 4px rgba(255,255,255,0.25), inset 0 -4px 8px rgba(0,0,0,0.9)'
+        }}
+      >
+        {/* Outer Wheel Rim (Molded Dark Perforated Leather / Carbon Ring) */}
+        <div
+          className="absolute inset-0 rounded-full border-[18px] border-[#181a20]"
+          style={{
+            boxShadow: 'inset 0 0 10px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85)'
+          }}
+        />
+
+        {/* 12-o'clock Racing Centering Stripe (Bright Cyan Neon) */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-4 h-[18px] bg-cyan-400 rounded-sm shadow-[0_0_12px_#00f2fe] z-20" />
+
+        {/* 9-o'clock and 3-o'clock Ergonomic Textured Grips */}
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[22px] h-28 bg-[#1f232b] rounded-r-lg border-r border-cyan-500/30 flex flex-col justify-around py-2 items-center opacity-90 shadow-inner">
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+        </div>
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[22px] h-28 bg-[#1f232b] rounded-l-lg border-l border-cyan-500/30 flex flex-col justify-around py-2 items-center opacity-90 shadow-inner">
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+          <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+        </div>
+
+        {/* Left Spoke (Brushed Aluminum / Carbon) */}
+        <div className="absolute left-[16px] top-1/2 -translate-y-1/2 w-[56px] h-[34px] bg-gradient-to-r from-[#2a2d36] to-[#1c1e24] rounded-l-md border-t border-b border-white/10 flex items-center justify-center shadow-lg">
+          <div className="w-6 h-3 rounded-full bg-[#121418] border border-white/5" />
+        </div>
+
+        {/* Right Spoke */}
+        <div className="absolute right-[16px] top-1/2 -translate-y-1/2 w-[56px] h-[34px] bg-gradient-to-l from-[#2a2d36] to-[#1c1e24] rounded-r-md border-t border-b border-white/10 flex items-center justify-center shadow-lg">
+          <div className="w-6 h-3 rounded-full bg-[#121418] border border-white/5" />
+        </div>
+
+        {/* Bottom Spoke */}
+        <div className="absolute bottom-[16px] left-1/2 -translate-x-1/2 w-[34px] h-[52px] bg-gradient-to-t from-[#2a2d36] to-[#1c1e24] rounded-b-md border-l border-r border-white/10 flex flex-col items-center justify-center shadow-lg">
+          <div className="w-3 h-6 rounded-full bg-[#121418] border border-white/5" />
+        </div>
+
+        {/* Central Horn Hub & Digital Telemetry Screen */}
+        <div
+          className="relative rounded-full flex flex-col items-center justify-center border-2 border-white/20 p-2 text-center shadow-2xl z-10"
+          style={{
+            width: size * 0.62,
+            height: size * 0.62,
+            background: 'radial-gradient(circle at 40% 40%, #1f232b 0%, #121419 75%, #0a0b0d 100%)'
+          }}
+        >
+          {/* Shift Light Array (F1 / GT3 sequential 10-LED bar) */}
+          <div className="flex items-center space-x-1 mb-1 px-2 py-0.5 bg-black/60 rounded-full border border-white/10">
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((idx) => {
+              const isActive = idx < activeLeds;
+              let color = '#10b981'; // Green (0-3)
+              if (idx >= 4 && idx < 7) color = '#f59e0b'; // Amber (4-6)
+              if (idx >= 7) color = '#ef4444'; // Red (7-9)
+
+              return (
+                <div
+                  key={idx}
+                  className={`w-1.5 h-1.5 rounded-full transition-all duration-75 ${
+                    isRedline && isActive ? 'animate-ping' : ''
+                  }`}
+                  style={{
+                    backgroundColor: isActive ? color : 'rgba(255,255,255,0.08)',
+                    boxShadow: isActive ? `0 0 6px ${color}` : 'none'
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Speed Digital Readout */}
+          <div className="text-2xl font-display font-black tracking-tight text-cyan-300 leading-none">
+            {speedKmh}
+          </div>
+          <div className="text-[9px] font-mono tracking-widest text-gray-400 uppercase leading-none mt-0.5">
+            KM/H
+          </div>
+
+          {/* Current Gear */}
+          <div className="flex items-center justify-center space-x-1.5 my-0.5">
+            <span className="text-[10px] text-gray-500 font-mono">GEAR</span>
+            <span className="text-lg font-display font-black text-amber-400 leading-none">
+              {gear}
+            </span>
+          </div>
+
+          {/* Realtime Steering Angle Readout */}
+          <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400 leading-none">
+            {angleDegrees === 0
+              ? '● CENTER'
+              : angleDegrees > 0
+              ? `▶ +${Math.abs(angleDegrees)}°`
+              : `◀ -${Math.abs(angleDegrees)}°`}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) => {
   const {
     steerNormalized,
@@ -242,27 +406,13 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
         {/* Steering Wheel Area (Center) */}
         <div className="flex-1 flex flex-col items-center justify-center my-1 relative">
-          {/* Circular Wheel Graphic */}
-          <div className="relative w-56 h-56 flex items-center justify-center">
-            {/* Outer Rotating Rim */}
-            <div
-              className="absolute inset-0 rounded-full border-4 border-dashed border-cyan-400/50 transition-transform duration-75 flex items-start justify-center shadow-2xl shadow-cyan-500/20"
-              style={{ transform: `rotate(${angleDegrees}deg)` }}
-            >
-              <div className="w-4 h-4 bg-cyan-400 rounded-full -mt-2 shadow-lg shadow-cyan-300 ring-4 ring-cyan-500/40" />
-            </div>
-
-            {/* Inner Wheel Hub */}
-            <div className="w-40 h-40 glass-panel rounded-full flex flex-col items-center justify-center border-2 border-white/20 p-2 text-center shadow-inner">
-              <span className="text-[10px] text-gray-400 uppercase font-mono">TILT WHEEL</span>
-              <div className="text-3xl font-display font-black text-cyan-300 my-0.5">
-                {Math.abs(angleDegrees)}°
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400">
-                {angleDegrees === 0 ? 'STRAIGHT' : angleDegrees > 0 ? 'TURNING RIGHT ▶' : '◀ TURNING LEFT'}
-              </span>
-            </div>
-          </div>
+          <PhysicalWheel
+            angleDegrees={angleDegrees}
+            speedKmh={hostTelemetry.speedKmh}
+            gear={hostTelemetry.gear}
+            rpm={hostTelemetry.rpm}
+            size={245}
+          />
 
           {/* Quick Actions (Camera, Reset, Nitro) */}
           <div className="w-full flex items-center justify-center space-x-2 mt-3 px-2">
@@ -460,37 +610,15 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           </button>
         </div>
 
-        {/* Center: Dynamic Gyro Telemetry Ring & Angle HUD */}
+        {/* Center: Physical Steering Wheel & Cockpit Telemetry */}
         <div className="flex-1 flex flex-col items-center justify-center px-4">
-          {/* Gyro Wheel HUD Ring */}
-          <div className="relative w-44 h-44 flex items-center justify-center">
-            {/* Outer Rotating Steering Marker */}
-            <div
-              className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400/40 transition-transform duration-75"
-              style={{ transform: `rotate(${angleDegrees}deg)` }}
-            >
-              <div className="w-3 h-3 bg-cyan-400 rounded-full mx-auto -mt-1.5 shadow-lg shadow-cyan-400/80" />
-            </div>
-
-            {/* Inner Telemetry Display */}
-            <div className="w-36 h-36 glass-panel rounded-full flex flex-col items-center justify-center border border-white/20 p-2 text-center shadow-inner">
-              <span className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">
-                STEER ANGLE
-              </span>
-              <div className="text-3xl font-display font-bold text-cyan-300 my-0.5">
-                {Math.abs(angleDegrees)}°
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400">
-                {angleDegrees === 0 ? 'CENTER' : angleDegrees > 0 ? 'RIGHT' : 'LEFT'}
-              </span>
-
-              {/* Host Telemetry Reflection */}
-              <div className="mt-1 pt-1 border-t border-white/10 flex items-center space-x-3 text-xs">
-                <span className="text-white font-bold">{hostTelemetry.speedKmh} KM/H</span>
-                <span className="text-amber-400 font-bold">G {hostTelemetry.gear}</span>
-              </div>
-            </div>
-          </div>
+          <PhysicalWheel
+            angleDegrees={angleDegrees}
+            speedKmh={hostTelemetry.speedKmh}
+            gear={hostTelemetry.gear}
+            rpm={hostTelemetry.rpm}
+            size={215}
+          />
 
           {/* Quick Utility Actions */}
           <div className="flex items-center space-x-3 mt-2">

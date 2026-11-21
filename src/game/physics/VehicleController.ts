@@ -15,6 +15,8 @@ export class VehiclePhysics {
   public isDrifting: boolean = false;
   public driftAngle: number = 0;
   public driftScore: number = 0;
+  public driftYawAngle: number = 0; // Visual oversteer slip angle (chassis yaw relative to velocity)
+  private driftTimer: number = 0;
   public isAirborne: boolean = false;
   public isJumping: boolean = false;
   public jumpAirTimer: number = 0;
@@ -108,54 +110,89 @@ export class VehiclePhysics {
 
     // 4. Realistic Dynamic Steering & Physics-Based Handling
     // Speed-sensitive steering angle attenuation:
-    // Low speed (0-40 km/h): up to 26 deg for hairpins & tight curves
-    // Medium speed (60-120 km/h): ~16 deg for agile road carving
-    // High speed (180+ km/h): ~8 deg for rock-solid, stable highway driving (prevents twitchy spins)
+    // Low speed (0-40 km/h): up to 28 deg for hairpins & tight curves
+    // Medium speed (60-120 km/h): ~18 deg for agile road carving
+    // High speed (180+ km/h): ~9 deg for rock-solid, stable highway driving (prevents twitchy spins)
     const speedNorm = Math.min(1.0, this.speedKmh / 220);
     const speedSteerAngleRad = THREE.MathUtils.lerp(
-      THREE.MathUtils.degToRad(26),
-      THREE.MathUtils.degToRad(7.8),
+      THREE.MathUtils.degToRad(28),
+      THREE.MathUtils.degToRad(8.8),
       speedNorm * speedNorm
     );
 
     const targetSteerAngle = -input.steer * speedSteerAngleRad;
     // Progressive steering build-up with natural self-centering caster return
-    const steerFilterRate = Math.abs(input.steer) > 0.05 ? 6.5 : 10.0;
+    const steerFilterRate = Math.abs(input.steer) > 0.05 ? 7.2 : 11.0;
     this.currentSteerAngle += (targetSteerAngle - this.currentSteerAngle) * Math.min(1.0, delta * steerFilterRate);
 
-    const isEbrake = input.handbrake && this.speedKmh > 30;
-    const isHardSteerDrift = Math.abs(input.steer) > 0.75 && this.speedKmh > 85;
+    // Need for Speed / Asphalt Style Multi-Trigger Drift System:
+    // 1. Handbrake tap (Space / Mobile E-Brake)
+    // 2. Brake-to-Drift: Tapping brake while steering into a turn at speed
+    // 3. Hard flick: Quick aggressive steering angle at high speed
+    // 4. Drift Sustain: Maintaining steering angle while sliding
+    const isEbrake = input.handbrake && this.speedKmh > 20;
+    const isBrakeFlick = input.brake > 0.25 && Math.abs(input.steer) > 0.32 && this.speedKmh > 40;
+    const isHardSteerFlick = Math.abs(input.steer) > 0.65 && this.speedKmh > 65;
+    const isSustainedDrift = this.isDrifting && Math.abs(input.steer) > 0.18 && this.speedKmh > 25;
 
-    // Authentic bicycle kinematic turning model: omega = (v / L) * tan(delta)
+    const shouldDrift = (isEbrake || isBrakeFlick || isHardSteerFlick || isSustainedDrift) && Math.abs(forwardSpeed) > 1.0;
+
     const wheelbase = 2.7; // Standard supercar wheelbase (Ferrari 458 / GT3)
     let turnRate = 0;
 
     if (Math.abs(forwardSpeed) > 0.4) {
       const dir = Math.sign(forwardSpeed);
 
-      if (isEbrake || isHardSteerDrift) {
+      if (shouldDrift) {
         this.isDrifting = true;
-        turnRate = this.currentSteerAngle * 2.2 * dir;
-        this.driftScore += Math.round(this.speedKmh * delta * 6);
+        this.driftTimer += delta;
+        turnRate = this.currentSteerAngle * 2.65 * dir;
+        this.driftScore += Math.round(this.speedKmh * delta * 12);
+        // Fast nitro refill during continuous drift
+        this.nitroFuel = Math.min(100, this.nitroFuel + delta * 16);
+
+        // Calculate visual oversteer chassis yaw angle (car body pitches sideways into the corner)
+        const steerSign = Math.sign(input.steer || -this.currentSteerAngle || 1);
+        const targetSlip = -steerSign * THREE.MathUtils.degToRad(20 + Math.min(18, (this.speedKmh / 180) * 18));
+        this.driftYawAngle = THREE.MathUtils.lerp(this.driftYawAngle, targetSlip, Math.min(1.0, delta * 7.5));
+
+        // Lateral velocity pushes the car along the road in a glorious arc
         this.lateralSlipVelocity = THREE.MathUtils.lerp(
           this.lateralSlipVelocity,
-          -input.steer * (forwardSpeed * 0.32),
-          delta * 4.0
+          -input.steer * (forwardSpeed * 0.46),
+          delta * 4.8
         );
+
+        // Power slide throttle sustain: engine keeps wheelspinning, maintaining forward momentum
+        if (this.smoothedThrottle > 0.15) {
+          forwardSpeed += this.accelerationRate * 0.45 * delta;
+        }
       } else {
+        // Drift Exit Boost: Exiting a solid drift rewards player with punch forward
+        if (this.isDrifting && this.driftTimer > 0.65 && this.speedKmh > 45) {
+          forwardSpeed = Math.min((currentMaxSpeed * 1000) / 3600, forwardSpeed + 3.8); // +14 km/h surge!
+        }
+
         this.isDrifting = false;
+        this.driftTimer = 0;
+        this.driftYawAngle = THREE.MathUtils.lerp(this.driftYawAngle, 0, Math.min(1.0, delta * 8.5));
+
         // Clean mechanical grip cornering with speed scaling
-        const gripTurnSpeed = Math.min(forwardSpeed, 36.0);
-        turnRate = (this.currentSteerAngle / wheelbase) * gripTurnSpeed * 0.45 * dir;
-        this.lateralSlipVelocity = THREE.MathUtils.lerp(this.lateralSlipVelocity, 0, delta * 9.0);
+        const gripTurnSpeed = Math.min(forwardSpeed, 42.0);
+        turnRate = (this.currentSteerAngle / wheelbase) * gripTurnSpeed * 0.46 * dir;
+        this.lateralSlipVelocity = THREE.MathUtils.lerp(this.lateralSlipVelocity, 0, delta * 9.5);
       }
     } else {
       this.isDrifting = false;
+      this.driftTimer = 0;
+      this.driftYawAngle = 0;
       this.lateralSlipVelocity = 0;
     }
 
     this.headingAngle += turnRate * delta;
-    this.driftAngle = this.isDrifting ? Math.abs(Math.round(THREE.MathUtils.radToDeg(this.currentSteerAngle))) : 0;
+    this.driftAngle = this.isDrifting
+      ? Math.abs(Math.round(THREE.MathUtils.radToDeg(this.driftYawAngle)))
+      : 0;
 
     // 5. Vertical Suspension & Ground Adhesion
     const targetSuspensionY = this.groundHeight + 0.42;
@@ -200,11 +237,11 @@ export class VehiclePhysics {
     if (closestPointFunc) {
       const { point, tangent, dist } = closestPointFunc(this.position.x, this.position.z);
 
-      // Road is 12.0m wide (center to edge is 6.0m). Guardrail centerline is at 6.8m.
+      // Road is 18.5m wide (center to edge is 9.25m). Guardrail centerline is at 10.45m.
       // Car is 2.0m wide (half-width 1.0m).
-      // Max allowed center distance = 6.8m - 1.0m - 0.2m buffer = 5.6m.
-      // At 5.6m, the outer edge of the car lightly brushes the Armco guardrail and CANNOT mount on top!
-      const maxCenterDist = 5.6;
+      // Max allowed center distance = 10.45m - 1.0m - 0.25m buffer = 9.2m.
+      // At 9.2m, the outer edge of the car lightly brushes the Armco guardrail and CANNOT mount on top!
+      const maxCenterDist = 9.2;
 
       if (dist > maxCenterDist) {
         // Vector from car position towards track centerline
@@ -241,11 +278,12 @@ export class VehiclePhysics {
       }
     }
 
-    // 8. Dynamic Chassis Roll & Pitch Visuals
-    const targetRoll = this.isDrifting ? -this.currentSteerAngle * 0.38 : -this.currentSteerAngle * 0.16;
+    // 8. Dynamic Chassis Roll & Pitch Visuals with Drift Slip Angle
+    const targetRoll = this.isDrifting ? -this.currentSteerAngle * 0.45 : -this.currentSteerAngle * 0.16;
     const targetPitch = (this.smoothedThrottle * 0.038) - (input.brake * 0.075);
 
-    this.rotation.set(targetPitch, this.headingAngle, targetRoll, 'YXZ');
+    // Apply heading angle PLUS visual drift slip angle so car model turns sideways during drift!
+    this.rotation.set(targetPitch, this.headingAngle + this.driftYawAngle, targetRoll, 'YXZ');
     this.quaternion.setFromEuler(this.rotation);
 
     // 9. Transmission & RPM Simulation

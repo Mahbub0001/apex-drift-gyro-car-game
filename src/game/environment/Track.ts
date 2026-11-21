@@ -19,38 +19,46 @@ export class HighwayTrack {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
 
-    // 1. Grand Countryside Highway Circuit (Closed Seamless Loop ~3.8 KM)
+    // 1. Grand Alpine & Coastal Highway Circuit (Expanded 7.6 KM Closed Circuit)
     const points = [
-      // Sector 1: Start/Finish Straightaway (facing +Z)
+      // Sector 1: Start/Finish Speedway Corridor (High-Speed Straightaway facing +Z)
       new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, 160),
-      new THREE.Vector3(0, 0, 320),
+      new THREE.Vector3(0, 0, 250),
+      new THREE.Vector3(0, 0, 580),
 
-      // Sector 2: Sweeping Mountain Foothills Pass (Turn 1-2)
-      new THREE.Vector3(60, 2.5, 520),
-      new THREE.Vector3(140, 5.0, 740),
-      new THREE.Vector3(180, 8.5, 960),
+      // Sector 2: Coastal Valley Sweeps & Ascending Foothills (Turn 1-3)
+      new THREE.Vector3(140, 2.8, 980),
+      new THREE.Vector3(320, 6.5, 1420),
+      new THREE.Vector3(450, 11.0, 1880),
 
-      // Sector 3: Alpine Hillclimb & Stunt Jump Ramp (Turn 3-4)
-      new THREE.Vector3(150, 12.0, 1180),
-      new THREE.Vector3(70, 7.5, 1400),
+      // Sector 3: Alpine Mountain Pass & High Viaduct Bridge (Turn 4-5)
+      new THREE.Vector3(480, 17.5, 2350),
+      new THREE.Vector3(390, 23.0, 2800),
+      new THREE.Vector3(210, 26.5, 3180),
 
-      // Sector 4: Forest Hairpin & S-Bends (Turn 5-7)
-      new THREE.Vector3(-40, 4.0, 1540),
-      new THREE.Vector3(-150, 2.0, 1460),
-      new THREE.Vector3(-230, 1.5, 1280),
+      // Sector 4: Alpine Summit Crest & Stunt Jump Launch (Turn 6-7)
+      new THREE.Vector3(30, 22.0, 3420),
+      new THREE.Vector3(-190, 16.5, 3360),
 
-      // Sector 5: Return Valley Highway (Turn 8-9)
-      new THREE.Vector3(-270, 3.5, 1020),
-      new THREE.Vector3(-260, 6.0, 740),
-      new THREE.Vector3(-210, 4.0, 460),
+      // Sector 5: Mountain Tunnel Cut & Rocky Canyon (Turn 8-10)
+      new THREE.Vector3(-390, 11.0, 3080),
+      new THREE.Vector3(-530, 6.2, 2660),
+      new THREE.Vector3(-590, 3.8, 2180),
 
-      // Sector 6: Sweeping Turn 10-12 Reconnecting into Start Grid
-      new THREE.Vector3(-140, 2.0, 200),
-      new THREE.Vector3(-60, 0.8, 40),
-      new THREE.Vector3(-15, 0.2, -60),
-      new THREE.Vector3(0, 0.0, -120),
-      new THREE.Vector3(0, 0.0, -60)
+      // Sector 6: Canyon Drift S-Bends & Fast Chicanes (Turn 11-13)
+      new THREE.Vector3(-560, 2.2, 1680),
+      new THREE.Vector3(-460, 4.6, 1220),
+      new THREE.Vector3(-510, 5.8, 820),
+
+      // Sector 7: Return Expressway & Sweeping Valley Straights (Turn 14-16)
+      new THREE.Vector3(-440, 3.8, 420),
+      new THREE.Vector3(-290, 1.8, 120),
+      new THREE.Vector3(-130, 0.7, -90),
+
+      // Sector 8: Final Chicanes & Grid Reconnection
+      new THREE.Vector3(-40, 0.2, -220),
+      new THREE.Vector3(0, 0.0, -140),
+      new THREE.Vector3(0, 0.0, -40)
     ];
 
     this.splineCurve = new THREE.CatmullRomCurve3(points, true); // CLOSED = TRUE!
@@ -58,11 +66,14 @@ export class HighwayTrack {
     this.splineCurve.tension = 0.5;
 
     // Pre-sample spline points for ultrafast O(1) nearest-point lookups
-    this.sampledPoints = this.splineCurve.getPoints(600);
+    this.sampledPoints = this.splineCurve.getPoints(1200);
 
     this.setupLighting();
     this.buildTerrain();
+    this.buildDistantMountains();
     this.buildRoad();
+    this.buildHighwayTunnel();
+    this.buildViaductBridge();
     this.buildArmcoGuardrails();
     this.buildTrackArchitecture();
     this.buildChevronSigns();
@@ -132,11 +143,11 @@ export class HighwayTrack {
     this.scene.add(hemiLight);
   }
 
-  // 2. Rolling British Hills Contouring Seamlessly Along the Grand Circuit
+  // 2. Rolling British & Alpine Countryside Contouring Seamlessly Along the Grand Circuit
   private buildTerrain() {
-    const terrainGeo = new THREE.PlaneGeometry(1600, 2400, 140, 140);
+    const terrainGeo = new THREE.PlaneGeometry(2800, 4800, 160, 200);
     terrainGeo.rotateX(-Math.PI / 2);
-    terrainGeo.translate(-45, 0, 770);
+    terrainGeo.translate(-60, 0, 1600);
 
     const pos = terrainGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
@@ -145,8 +156,8 @@ export class HighwayTrack {
 
       const elev = this.getElevationAt(vx, vz);
       const { dist } = this.getClosestSplinePoint(vx, vz);
-      // Depress ground mesh beneath asphalt road ribbon to completely eliminate Z-fighting
-      const y = dist < 6.4 ? elev - 0.32 : (dist < 8.4 ? elev - 0.32 * (1 - (dist - 6.4) / 2.0) : elev);
+      // Depress ground mesh beneath 18.5m asphalt road ribbon to completely eliminate Z-fighting
+      const y = dist < 9.5 ? elev - 0.34 : (dist < 12.5 ? elev - 0.34 * (1 - (dist - 9.5) / 3.0) : elev);
       pos.setY(i, y);
     }
     terrainGeo.computeVertexNormals();
@@ -171,9 +182,8 @@ export class HighwayTrack {
         const n1 = Math.sin(x * 0.035) * Math.cos(y * 0.035);
         const n2 = Math.sin(x * 0.12 + y * 0.08) * 0.5;
         const n3 = Math.sin(x * 0.45) * Math.sin(y * 0.45) * 0.25;
-        const noise = (n1 + n2 + n3 + 1.75) / 3.5; // [0, 1]
+        const noise = (n1 + n2 + n3 + 1.75) / 3.5;
 
-        // Blend between deep forest moss (#233f16), vibrant turf (#3a6824), and dry prairie grass (#4a5c24)
         const r = Math.floor(35 + noise * 38);
         const g = Math.floor(62 + noise * 48);
         const b = Math.floor(22 + noise * 18);
@@ -195,7 +205,7 @@ export class HighwayTrack {
     const terrainTexture = new THREE.CanvasTexture(canvas);
     terrainTexture.wrapS = THREE.RepeatWrapping;
     terrainTexture.wrapT = THREE.RepeatWrapping;
-    terrainTexture.repeat.set(48, 72);
+    terrainTexture.repeat.set(72, 120);
     terrainTexture.anisotropy = 8;
 
     const terrainMat = new THREE.MeshStandardMaterial({
@@ -209,58 +219,126 @@ export class HighwayTrack {
     this.trackGroup.add(terrain);
   }
 
-  // 4. Smooth Two-Lane Country Road Ribbon (Closed Seamless Circuit)
+  // 3. Majestic 360-Degree Ring of Alpine Mountain Peaks Encircling the Horizon
+  private buildDistantMountains() {
+    const mountainGroup = new THREE.Group();
+    const rockMat = new THREE.MeshStandardMaterial({
+      color: 0x47494e,
+      roughness: 0.94,
+      metalness: 0.06
+    });
+
+    const snowMat = new THREE.MeshStandardMaterial({
+      color: 0xf0f4f8,
+      roughness: 0.72,
+      metalness: 0.08
+    });
+
+    const numPeaks = 44;
+    const centerX = -60;
+    const centerZ = 1600;
+
+    for (let i = 0; i < numPeaks; i++) {
+      const angle = (i / numPeaks) * Math.PI * 2;
+      const radius = 1450 + (i % 5) * 110 + Math.random() * 80;
+      const mx = centerX + Math.cos(angle) * radius;
+      const mz = centerZ + Math.sin(angle) * radius;
+
+      const peakHeight = 150 + (i % 7) * 22 + Math.random() * 35;
+      const baseRadius = 260 + (i % 4) * 45;
+
+      // Mountain body
+      const mountainGeo = new THREE.ConeGeometry(baseRadius, peakHeight, 9, 3);
+      // Natural jagged ridge perturbation
+      const pos = mountainGeo.attributes.position;
+      for (let v = 0; v < pos.count; v++) {
+        const vx = pos.getX(v);
+        const vy = pos.getY(v);
+        const vz = pos.getZ(v);
+        const noise = 1.0 + Math.sin(vx * 0.04) * Math.cos(vz * 0.04) * 0.22;
+        pos.setXYZ(v, vx * noise, vy, vz * noise);
+      }
+      mountainGeo.computeVertexNormals();
+
+      const mountain = new THREE.Mesh(mountainGeo, rockMat);
+      mountain.position.set(mx, peakHeight * 0.44, mz);
+      mountain.rotation.y = angle + 0.3;
+      mountain.castShadow = false;
+      mountain.receiveShadow = true;
+      mountainGroup.add(mountain);
+
+      // Snow-capped peak summit
+      const snowGeo = new THREE.ConeGeometry(baseRadius * 0.38, peakHeight * 0.38, 9, 2);
+      const snowMesh = new THREE.Mesh(snowGeo, snowMat);
+      snowMesh.position.set(mx, peakHeight * 0.75, mz);
+      snowMesh.rotation.y = mountain.rotation.y;
+      mountainGroup.add(snowMesh);
+    }
+
+    this.trackGroup.add(mountainGroup);
+  }
+
+  // 4. Grand 4-Lane 18.5m Wide High-Speed Highway Ribbon
   private buildRoad() {
-    const numSteps = 700;
-    const roadWidth = 12.0;
+    const numSteps = 1400;
+    const roadWidth = 18.5; // Grand 4-lane width with generous overtaking & drift space
 
     const roadGeo = new THREE.BufferGeometry();
     const vertices: number[] = [];
     const uvs: number[] = [];
     const indices: number[] = [];
 
-    // Road Texture Canvas (Asphalt + Red/White Curbs + Double Yellow Dashes + Skid Marks)
+    // Road Texture Canvas (4 Lanes + Red/White Curbs + Double Yellow Median + Skid Marks)
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
+    canvas.width = 1024;
     canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
     // Asphalt Base (Rich dark charcoal asphalt)
-    ctx.fillStyle = '#1c1e23';
-    ctx.fillRect(0, 0, 512, 1024);
+    ctx.fillStyle = '#17191d';
+    ctx.fillRect(0, 0, 1024, 1024);
 
     // Subtle Asphalt Grain Noise
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-    for (let i = 0; i < 5000; i++) {
-      ctx.fillRect(Math.random() * 512, Math.random() * 1024, 2, 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+    for (let i = 0; i < 9000; i++) {
+      ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 2, 2);
     }
 
     // Outer Red/White Racing Rumble Strip Curbs
     for (let y = 0; y < 1024; y += 64) {
-      ctx.fillStyle = (y / 64) % 2 === 0 ? '#d90429' : '#ffffff';
-      ctx.fillRect(0, y, 22, 64);
-      ctx.fillRect(490, y, 22, 64);
+      ctx.fillStyle = (y / 64) % 2 === 0 ? '#d90429' : '#f8f9fa';
+      ctx.fillRect(0, y, 32, 64);
+      ctx.fillRect(992, y, 32, 64);
     }
 
-    // Solid White Edge Lines
+    // Solid White Shoulder Edge Lines
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(28, 0, 8, 1024);
-    ctx.fillRect(476, 0, 8, 1024);
+    ctx.fillRect(38, 0, 10, 1024);
+    ctx.fillRect(976, 0, 10, 1024);
 
-    // Double Dashed Yellow Center Line
-    ctx.fillStyle = '#ffb703';
-    for (let y = 0; y < 1024; y += 96) {
-      ctx.fillRect(248, y, 6, 56);
-      ctx.fillRect(258, y, 6, 56);
+    // Lane 1 & 2 separator (Dashed White)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    for (let y = 0; y < 1024; y += 100) {
+      ctx.fillRect(276, y, 8, 60);
     }
+
+    // Lane 3 & 4 separator (Dashed White)
+    for (let y = 0; y < 1024; y += 100) {
+      ctx.fillRect(740, y, 8, 60);
+    }
+
+    // Double Continuous Amber Yellow Center Median
+    ctx.fillStyle = '#ffb703';
+    ctx.fillRect(504, 0, 6, 1024);
+    ctx.fillRect(514, 0, 6, 1024);
 
     // Dark Rubber Tire Skid Marks on Apex Lines
-    ctx.fillStyle = 'rgba(10, 10, 12, 0.35)';
+    ctx.fillStyle = 'rgba(10, 10, 14, 0.32)';
     ctx.beginPath();
-    ctx.ellipse(180, 512, 12, 400, 0.05, 0, Math.PI * 2);
+    ctx.ellipse(360, 512, 16, 420, 0.05, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(332, 512, 12, 400, -0.05, 0, Math.PI * 2);
+    ctx.ellipse(664, 512, 16, 420, -0.05, 0, Math.PI * 2);
     ctx.fill();
 
     const roadTexture = new THREE.CanvasTexture(canvas);
@@ -271,7 +349,7 @@ export class HighwayTrack {
 
     const roadMat = new THREE.MeshStandardMaterial({
       map: roadTexture,
-      roughness: 0.65,
+      roughness: 0.62,
       metalness: 0.12,
       side: THREE.DoubleSide,
       polygonOffset: true,
@@ -291,8 +369,8 @@ export class HighwayTrack {
       vertices.push(left.x, left.y + 0.22, left.z);
       vertices.push(right.x, right.y + 0.22, right.z);
 
-      uvs.push(0, t * 140);
-      uvs.push(1, t * 140);
+      uvs.push(0, t * 240);
+      uvs.push(1, t * 240);
 
       if (i < numSteps) {
         const base = i * 2;
@@ -310,12 +388,12 @@ export class HighwayTrack {
     roadMesh.receiveShadow = true;
     this.trackGroup.add(roadMesh);
 
-    // Reflective Cat's-Eye Road Studs along center line every ~15 meters
-    const studGeo = new THREE.BoxGeometry(0.12, 0.04, 0.2);
+    // Reflective Amber Cat's-Eye Road Studs along center line every ~18 meters
+    const studGeo = new THREE.BoxGeometry(0.14, 0.05, 0.24);
     const studMat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
     const studGroup = new THREE.Group();
 
-    for (let t = 0; t <= 1.0; t += 0.005) {
+    for (let t = 0; t <= 1.0; t += 0.0025) {
       const pt = this.splineCurve.getPoint(t);
       const tang = this.splineCurve.getTangent(t);
       const stud = new THREE.Mesh(studGeo, studMat);
@@ -326,10 +404,108 @@ export class HighwayTrack {
     this.trackGroup.add(studGroup);
   }
 
+  // 4b. Mountain Highway Tunnel Section with Illuminated Neon Lights (t = 0.50 to 0.57)
+  private buildHighwayTunnel() {
+    const tunnelGroup = new THREE.Group();
+    const startT = 0.50;
+    const endT = 0.57;
+    const steps = 70;
+
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x27292d,
+      roughness: 0.88,
+      metalness: 0.12,
+      side: THREE.BackSide
+    });
+
+    const lightMat = new THREE.MeshBasicMaterial({ color: 0xfff0aa });
+
+    // Build arched tubular tunnel enclosure
+    const tunnelPoints: THREE.Vector3[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = startT + (i / steps) * (endT - startT);
+      const pt = this.splineCurve.getPoint(t);
+      tunnelPoints.push(new THREE.Vector3(pt.x, pt.y + 3.8, pt.z));
+    }
+
+    const tunnelPath = new THREE.CatmullRomCurve3(tunnelPoints);
+    const tunnelGeo = new THREE.TubeGeometry(tunnelPath, steps, 11.2, 12, false);
+    const tunnelMesh = new THREE.Mesh(tunnelGeo, wallMat);
+    tunnelGroup.add(tunnelMesh);
+
+    // Overhead ceiling strip lights
+    for (let i = 4; i < steps; i += 4) {
+      const t = startT + (i / steps) * (endT - startT);
+      const pt = this.splineCurve.getPoint(t);
+      const tang = this.splineCurve.getTangent(t);
+
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 3.2), lightMat);
+      lamp.position.set(pt.x, pt.y + 7.2, pt.z);
+      lamp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tang);
+      tunnelGroup.add(lamp);
+    }
+
+    // Tunnel Portals with Caution Chevron Markings
+    const portalMat = new THREE.MeshStandardMaterial({ color: 0x1c1e22, roughness: 0.6 });
+    for (const portalT of [startT, endT]) {
+      const pt = this.splineCurve.getPoint(portalT);
+      const tang = this.splineCurve.getTangent(portalT);
+      const portal = new THREE.Group();
+      portal.position.set(pt.x, pt.y + 4.0, pt.z);
+      portal.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tang);
+
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(11.4, 1.2, 8, 16, Math.PI), portalMat);
+      arch.rotation.x = -Math.PI / 2;
+      portal.add(arch);
+      tunnelGroup.add(portal);
+    }
+
+    this.trackGroup.add(tunnelGroup);
+  }
+
+  // 4c. Concrete Viaduct Bridge over Scenic Mountain Valley (t = 0.27 to 0.35)
+  private buildViaductBridge() {
+    const bridgeGroup = new THREE.Group();
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: 0x6c757d,
+      roughness: 0.85,
+      metalness: 0.15
+    });
+
+    const startT = 0.27;
+    const endT = 0.35;
+    const numPillars = 9;
+
+    for (let i = 0; i < numPillars; i++) {
+      const t = startT + (i / (numPillars - 1)) * (endT - startT);
+      const pt = this.splineCurve.getPoint(t);
+
+      // Deep concrete piers grounding elevated highway to the valley basin
+      const pillarHeight = Math.max(8.0, pt.y + 4.0);
+      const pillarGeo = new THREE.BoxGeometry(2.8, pillarHeight, 2.8);
+      const pL = new THREE.Mesh(pillarGeo, pillarMat);
+      pL.position.set(pt.x - 7.5, pt.y - pillarHeight / 2, pt.z);
+      pL.castShadow = true;
+
+      const pR = new THREE.Mesh(pillarGeo, pillarMat);
+      pR.position.set(pt.x + 7.5, pt.y - pillarHeight / 2, pt.z);
+      pR.castShadow = true;
+
+      // Cross-beam girder
+      const girder = new THREE.Mesh(new THREE.BoxGeometry(20.0, 1.5, 3.2), pillarMat);
+      girder.position.set(pt.x, pt.y - 0.75, pt.z);
+      girder.castShadow = true;
+
+      bridgeGroup.add(pL, pR, girder);
+    }
+
+    this.trackGroup.add(bridgeGroup);
+  }
+
   // 5. Armco Galvanized Steel Crash Barriers
   private buildArmcoGuardrails() {
-    const numSteps = 450;
-    const roadWidth = 12.0;
+    const numSteps = 900;
+    const roadWidth = 18.5; // Wide highway barrier spacing
 
     const railMat = new THREE.MeshStandardMaterial({
       color: 0xa8b0b8,
@@ -342,7 +518,7 @@ export class HighwayTrack {
       roughness: 0.95
     });
 
-    const postGeo = new THREE.BoxGeometry(0.18, 0.9, 0.18);
+    const postGeo = new THREE.BoxGeometry(0.2, 1.0, 0.2);
 
     for (let side of [-1, 1]) {
       const railPoints: THREE.Vector3[] = [];
@@ -354,8 +530,8 @@ export class HighwayTrack {
         const tangent = this.splineCurve.getTangent(t);
         const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
 
-        const barrierPos = pt.clone().add(binormal.multiplyScalar(side * (roadWidth / 2 + 0.8)));
-        barrierPos.y += 0.55;
+        const barrierPos = pt.clone().add(binormal.multiplyScalar(side * (roadWidth / 2 + 1.2)));
+        barrierPos.y += 0.58;
         railPoints.push(barrierPos);
 
         if (i % 3 === 0) {
@@ -366,8 +542,8 @@ export class HighwayTrack {
         }
       }
 
-      const railCurve = new THREE.CatmullRomCurve3(railPoints, true); // Closed tube!
-      const railGeo = new THREE.TubeGeometry(railCurve, numSteps, 0.14, 8, true);
+      const railCurve = new THREE.CatmullRomCurve3(railPoints, true);
+      const railGeo = new THREE.TubeGeometry(railCurve, numSteps, 0.16, 8, true);
       const railMesh = new THREE.Mesh(railGeo, railMat);
       railMesh.castShadow = true;
       railMesh.receiveShadow = true;
@@ -390,14 +566,14 @@ export class HighwayTrack {
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1f242d, metalness: 0.8, roughness: 0.3 });
     const beamMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 });
 
-    const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6.5, 0.8), pillarMat);
-    pillarL.position.set(-7.5, 3.25, 0);
+    const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 7.2, 0.9), pillarMat);
+    pillarL.position.set(-11.5, 3.6, 0);
     pillarL.castShadow = true;
     const pillarR = pillarL.clone();
-    pillarR.position.x = 7.5;
+    pillarR.position.x = 11.5;
 
-    const crossbeam = new THREE.Mesh(new THREE.BoxGeometry(16.5, 1.4, 1.0), beamMat);
-    crossbeam.position.set(0, 6.0, 0);
+    const crossbeam = new THREE.Mesh(new THREE.BoxGeometry(24.5, 1.6, 1.2), beamMat);
+    crossbeam.position.set(0, 6.6, 0);
     crossbeam.castShadow = true;
 
     // Neon Race Banner
@@ -414,11 +590,11 @@ export class HighwayTrack {
 
     const bannerTex = new THREE.CanvasTexture(bannerCanvas);
     const banner = new THREE.Mesh(
-      new THREE.PlaneGeometry(14, 1.1),
+      new THREE.PlaneGeometry(21.0, 1.3),
       new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide })
     );
     banner.rotation.y = Math.PI; // Face approaching vehicles
-    banner.position.set(0, 6.0, -0.52);
+    banner.position.set(0, 6.6, -0.62);
 
     archGroup.add(pillarL, pillarR, crossbeam, banner);
     this.trackGroup.add(archGroup);
@@ -432,19 +608,19 @@ export class HighwayTrack {
       gantry.position.copy(pt);
       gantry.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tang);
 
-      const pL = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 7.0, 12), pillarMat);
-      pL.position.set(-7.5, 3.5, 0);
+      const pL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7.8, 12), pillarMat);
+      pL.position.set(-11.5, 3.9, 0);
       const pR = pL.clone();
-      pR.position.x = 7.5;
+      pR.position.x = 11.5;
 
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.4, 0.4), pillarMat);
-      beam.position.set(0, 6.5, 0);
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(24.0, 0.45, 0.45), pillarMat);
+      beam.position.set(0, 7.2, 0);
 
       const signBoard = new THREE.Mesh(
-        new THREE.BoxGeometry(6.5, 2.2, 0.15),
+        new THREE.BoxGeometry(8.5, 2.6, 0.18),
         new THREE.MeshStandardMaterial({ color: 0x007749, roughness: 0.4 })
       );
-      signBoard.position.set(-2.5, 5.2, 0);
+      signBoard.position.set(-3.5, 5.8, 0);
 
       gantry.add(pL, pR, beam, signBoard);
       this.trackGroup.add(gantry);
@@ -457,13 +633,13 @@ export class HighwayTrack {
 
     // Sharp curve zones: t values and sign directions (1 = curve right, -1 = curve left)
     const curveLocations = [
-      { t: 0.08, dir: 1, count: 5 },  // Turn 1
-      { t: 0.16, dir: 1, count: 5 },  // Turn 2
-      { t: 0.28, dir: -1, count: 6 }, // Turn 3-4 Alpine crest
-      { t: 0.44, dir: -1, count: 7 }, // Turn 5 Forest Hairpin
-      { t: 0.52, dir: 1, count: 5 },  // Turn 6 S-Bend
-      { t: 0.65, dir: -1, count: 5 }, // Turn 8 Valley sweep
-      { t: 0.88, dir: 1, count: 5 }   // Turn 11 Final entry
+      { t: 0.07, dir: 1, count: 6 },  // Turn 1
+      { t: 0.17, dir: 1, count: 6 },  // Turn 2
+      { t: 0.26, dir: -1, count: 7 }, // Turn 3-4 Alpine crest
+      { t: 0.42, dir: -1, count: 7 }, // Turn 5 Forest Hairpin
+      { t: 0.63, dir: 1, count: 7 },  // Turn 8 S-Bend
+      { t: 0.76, dir: -1, count: 6 }, // Turn 10 Valley sweep
+      { t: 0.89, dir: 1, count: 6 }   // Turn 12 Final entry
     ];
 
     // High-visibility reflective yellow canvas with bold black chevron arrow
@@ -518,13 +694,13 @@ export class HighwayTrack {
       const mat = new THREE.MeshBasicMaterial({ map: dir === 1 ? rightTex : leftTex, side: THREE.DoubleSide });
 
       for (let j = 0; j < count; j++) {
-        const signT = (t + j * 0.007) % 1.0;
+        const signT = (t + j * 0.005) % 1.0;
         const pt = this.splineCurve.getPoint(signT);
         const tang = this.splineCurve.getTangent(signT);
         const binorm = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
         // Place on outer barrier of the curve
-        const sideOffset = -dir * 7.1;
+        const sideOffset = -dir * 10.8;
         const pos = pt.clone().add(binorm.multiplyScalar(sideOffset));
         pos.y += 0.85;
 
@@ -583,18 +759,18 @@ export class HighwayTrack {
 
     // Braking zones before Turn 1 and Turn 5
     const zones = [
-      { baseT: 0.055, distances: ['150', '100', '50'] },
-      { baseT: 0.41, distances: ['150', '100', '50'] }
+      { baseT: 0.05, distances: ['150', '100', '50'] },
+      { baseT: 0.39, distances: ['150', '100', '50'] }
     ];
 
     zones.forEach(({ baseT, distances }) => {
       distances.forEach((distStr, idx) => {
-        const markerT = (baseT + idx * 0.005) % 1.0;
+        const markerT = (baseT + idx * 0.004) % 1.0;
         const pt = this.splineCurve.getPoint(markerT);
         const tang = this.splineCurve.getTangent(markerT);
         const binorm = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
-        const pos = pt.clone().add(binorm.multiplyScalar(7.2));
+        const pos = pt.clone().add(binorm.multiplyScalar(11.0));
         pos.y += 0.7;
 
         const markerObj = new THREE.Group();
@@ -625,15 +801,15 @@ export class HighwayTrack {
     const headMat = new THREE.MeshStandardMaterial({ color: 0x212529, metalness: 0.9, roughness: 0.2 });
     const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
 
-    const poleGeo = new THREE.CylinderGeometry(0.12, 0.18, 9.5, 10);
-    const armGeo = new THREE.CylinderGeometry(0.08, 0.1, 4.0, 8);
+    const poleGeo = new THREE.CylinderGeometry(0.14, 0.22, 10.5, 10);
+    const armGeo = new THREE.CylinderGeometry(0.09, 0.12, 4.8, 8);
     armGeo.rotateZ(Math.PI / 3);
 
-    const headGeo = new THREE.BoxGeometry(0.8, 0.22, 1.4);
-    const bulbGeo = new THREE.PlaneGeometry(0.65, 1.2);
+    const headGeo = new THREE.BoxGeometry(0.9, 0.24, 1.5);
+    const bulbGeo = new THREE.PlaneGeometry(0.75, 1.3);
     bulbGeo.rotateX(Math.PI / 2);
 
-    const numLamps = 34; // ~110m intervals around the closed 3.8 KM circuit
+    const numLamps = 68; // Spaced evenly along the expanded 7.6 KM highway circuit
     for (let i = 0; i < numLamps; i++) {
       const t = i / numLamps;
       const pt = this.splineCurve.getPoint(t);
@@ -641,7 +817,7 @@ export class HighwayTrack {
       const binorm = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
       const side = (i % 2 === 0 ? 1 : -1);
-      const pos = pt.clone().add(binorm.multiplyScalar(side * 7.6));
+      const pos = pt.clone().add(binorm.multiplyScalar(side * 11.2));
       pos.y = this.getElevationAt(pos.x, pos.z);
 
       const lamp = new THREE.Group();
@@ -650,20 +826,20 @@ export class HighwayTrack {
 
       // Main vertical pole
       const pole = new THREE.Mesh(poleGeo, lampMat);
-      pole.position.set(0, 4.75, 0);
+      pole.position.set(0, 5.25, 0);
       pole.castShadow = true;
 
       // Curved overhang arm reaching into the road
       const arm = new THREE.Mesh(armGeo, lampMat);
-      arm.position.set(-side * 1.5, 9.8, 0);
+      arm.position.set(-side * 2.0, 10.2, 0);
       arm.rotation.z = side * (Math.PI / 3);
 
       // Overhead luminaire housing
       const head = new THREE.Mesh(headGeo, headMat);
-      head.position.set(-side * 2.8, 10.6, 0);
+      head.position.set(-side * 3.6, 11.0, 0);
 
       const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-      bulb.position.set(-side * 2.8, 10.45, 0);
+      bulb.position.set(-side * 3.6, 10.85, 0);
 
       lamp.add(pole, arm, head, bulb);
       lampGroup.add(lamp);
@@ -876,8 +1052,8 @@ export class HighwayTrack {
     const bushTemplate = this.createBushTemplate();
     const treeGroup = new THREE.Group();
 
-    // 1. Densely line the entire 3.8 KM circuit with alternating Oaks, Pines & Roadside Bushes
-    const count = 300;
+    // 1. Densely line the entire 7.6 KM circuit with alternating Oaks, Pines & Roadside Bushes
+    const count = 480;
     for (let i = 0; i < count; i++) {
       const t = i / count;
       const pt = this.splineCurve.getPoint(t);
@@ -885,12 +1061,12 @@ export class HighwayTrack {
       const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
 
       const side = (i % 2 === 0 ? 1 : -1) * (i % 3 === 0 ? -1 : 1);
-      const distance = 10.2 + (i % 5) * 3.4 + Math.random() * 4.0;
+      const distance = 14.5 + (i % 5) * 4.2 + Math.random() * 5.0;
       const treePos = pt.clone().add(binormal.multiplyScalar(side * distance));
 
-      // Absolute safety constraint: never place any tree within 9.5m of ANY road surface!
+      // Absolute safety constraint: never place any tree within 13.0m of ANY road center (road width = 18.5m)
       const { dist } = this.getClosestSplinePoint(treePos.x, treePos.z);
-      if (dist < 9.5) continue;
+      if (dist < 13.0) continue;
 
       const groundY = this.getElevationAt(treePos.x, treePos.z);
 
@@ -904,24 +1080,27 @@ export class HighwayTrack {
 
       // Sprinkle roadside wild shrubs along the embankment
       if (i % 2 === 0) {
-        const bushPos = pt.clone().add(binormal.multiplyScalar(side * (8.8 + Math.random() * 1.2)));
-        const bushY = this.getElevationAt(bushPos.x, bushPos.z);
-        const bush = bushTemplate.clone(true);
-        bush.position.set(bushPos.x, bushY, bushPos.z);
-        bush.rotation.y = Math.random() * Math.PI * 2;
-        treeGroup.add(bush);
+        const bushPos = pt.clone().add(binormal.multiplyScalar(side * (12.2 + Math.random() * 1.5)));
+        const { dist: bushDist } = this.getClosestSplinePoint(bushPos.x, bushPos.z);
+        if (bushDist >= 11.2) {
+          const bushY = this.getElevationAt(bushPos.x, bushPos.z);
+          const bush = bushTemplate.clone(true);
+          bush.position.set(bushPos.x, bushY, bushPos.z);
+          bush.rotation.y = Math.random() * Math.PI * 2;
+          treeGroup.add(bush);
+        }
       }
     }
 
     // 2. Majestic Tree Avenue along the Starting Straightaway (Z = 25 to 320)
     for (let z = 25; z <= 320; z += 30) {
       for (const side of [-1, 1]) {
-        for (const distOffset of [11.5, 17.0]) {
+        for (const distOffset of [14.8, 21.0]) {
           const treePos = new THREE.Vector3(side * distOffset, 0, z);
 
-          // Absolute safety constraint: never place any tree within 9.5m of ANY road surface!
+          // Absolute safety constraint: never place any tree within 13.0m of ANY road surface!
           const { dist } = this.getClosestSplinePoint(treePos.x, treePos.z);
-          if (dist < 9.5) continue;
+          if (dist < 13.0) continue;
 
           const groundY = this.getElevationAt(treePos.x, treePos.z);
 
@@ -949,17 +1128,17 @@ export class HighwayTrack {
 
     const rockGroup = new THREE.Group();
 
-    for (let i = 0; i < 30; i++) {
-      const t = 0.28 + (i / 30) * 0.42;
+    for (let i = 0; i < 45; i++) {
+      const t = 0.22 + (i / 45) * 0.55;
       const pt = this.splineCurve.getPoint(t);
       const tangent = this.splineCurve.getTangent(t);
       const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
 
       const side = i % 2 === 0 ? 1 : -1;
-      const dist = 14.0 + Math.random() * 16.0;
+      const dist = 16.5 + Math.random() * 20.0;
       const rockPos = pt.clone().add(binormal.multiplyScalar(side * dist));
 
-      const rockScale = 1.2 + Math.random() * 2.2;
+      const rockScale = 1.4 + Math.random() * 2.8;
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rockScale, 1), rockMat);
       const groundY = this.getElevationAt(rockPos.x, rockPos.z);
       rock.position.set(rockPos.x, groundY + rockScale * 0.35, rockPos.z);
@@ -981,9 +1160,9 @@ export class HighwayTrack {
     rampGroup.position.set(rampPoint.x, rampPoint.y + 0.22, rampPoint.z);
     rampGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
 
-    const rampWidth = 6.0;
-    const rampLength = 9.0;
-    const rampHeight = 2.2;
+    const rampWidth = 7.5;
+    const rampLength = 10.0;
+    const rampHeight = 2.4;
 
     const rampGeo = new THREE.BoxGeometry(rampWidth, rampHeight, rampLength);
     rampGeo.rotateX(Math.PI / 14);
@@ -1031,16 +1210,16 @@ export class HighwayTrack {
       }
     }
 
-    if (dist < 6.5) {
-      // Direct asphalt road surface height
+    if (dist < 9.5) {
+      // Direct asphalt road surface height (18.5m wide road has 9.25m half-width)
       return point.y + 0.22;
-    } else if (dist < 8.5) {
+    } else if (dist < 13.0) {
       // Soft transition from asphalt curb edge to ground
-      const t = (dist - 6.5) / 2.0;
+      const t = (dist - 9.5) / 3.5;
       return (point.y + 0.22) * (1 - t) + (point.y - 0.05) * t;
     } else {
       // Rolling meadow countryside
-      const flankDist = dist - 8.5;
+      const flankDist = dist - 13.0;
       const rolling = Math.sin(x * 0.012) * Math.cos(z * 0.009) * 3.5;
       return point.y - 0.05 + Math.min(12.0, flankDist * 0.035) + rolling * Math.min(1.0, flankDist / 15.0);
     }

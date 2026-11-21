@@ -188,23 +188,23 @@ export class TrafficManager {
     });
   }
 
-  // Spawns a sparse, realistic highway traffic fleet (only 6 well-spaced cars)
+  // Spawns a sparse, realistic highway traffic fleet across the 4-lane grand highway
   private spawnInitialTraffic() {
-    const lanes = [-2.8, 2.8]; // 2 Clean highway lanes (left & right of yellow center line)
-    const types: ('sedan' | 'taxi' | 'van' | 'truck')[] = ['sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi'];
+    const lanes = [-5.6, -1.9, 1.9, 5.6]; // 4 Clean highway lanes across 18.5m road
+    const types: ('sedan' | 'taxi' | 'van' | 'truck')[] = ['sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi'];
 
-    // Only 6 cars spread across the entire 3.8 KM highway circuit!
-    const numTraffic = 6;
+    // 10 cars spread across the entire 7.6 KM highway circuit
+    const numTraffic = 10;
 
     for (let i = 0; i < numTraffic; i++) {
       const type = types[i % types.length];
       const color = this.trafficColors[i % this.trafficColors.length];
       const { mesh, width, length, height } = this.buildCarFromTemplate(type, color);
 
-      // Evenly staggered along the circuit: first civilian car directly ahead at t = 0.022 (~85m)
-      const t = 0.022 + (i / numTraffic) * 0.9;
+      // Evenly staggered along the circuit: first civilian car ahead at t = 0.025
+      const t = 0.025 + (i / numTraffic) * 0.92;
       const lane = lanes[i % lanes.length];
-      const baseSpeed = 0.0032 + (i % 2) * 0.0008; // Cruising highway speed ~70-90 km/h
+      const baseSpeed = 0.0018 + (i % 3) * 0.0006; // Scaled for 7.6 KM loop (~75-100 km/h)
 
       // Immediately set initial track position and tangent orientation
       const curvePoint = this.splineCurve.getPoint(t);
