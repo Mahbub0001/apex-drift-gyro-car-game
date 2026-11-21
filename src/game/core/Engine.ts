@@ -14,6 +14,38 @@ interface OpponentCarEntity {
   currentSpeed: number;
 }
 
+function createPlayerNameplate(username: string, color: string = '#00f2fe'): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.88)';
+  if (ctx.roundRect) {
+    ctx.roundRect(8, 8, 240, 48, 12);
+  } else {
+    ctx.rect(8, 8, 240, 48);
+  }
+  ctx.fill();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(username, 128, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(3.2, 0.8, 1.0);
+  sprite.position.y = 2.1;
+  return sprite;
+}
+
 export class GameEngine {
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
@@ -267,7 +299,13 @@ export class GameEngine {
 
       if (!entity) {
         const carConfig = SUPER_CARS.find((c) => c.id === remotePlayer.carId) || SUPER_CARS[0];
-        const meshes = createSportsCar(carConfig);
+        const hexColor = parseInt(remotePlayer.color.replace('#', '0x'), 16) || carConfig.bodyColorHex;
+        const opponentConfig = { ...carConfig, bodyColorHex: hexColor };
+        const meshes = createSportsCar(opponentConfig);
+
+        const nameplate = createPlayerNameplate(remotePlayer.username, remotePlayer.color);
+        meshes.root.add(nameplate);
+
         this.scene.add(meshes.root);
 
         entity = {

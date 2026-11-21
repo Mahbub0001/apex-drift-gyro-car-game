@@ -16,6 +16,7 @@ interface GameViewProps {
   onOpenGarage?: () => void;
   sharedHost?: WebRTCHost | null;
   isInitialPhoneConnected?: boolean;
+  initialOpenMultiplayer?: boolean;
 }
 
 export const GameView: React.FC<GameViewProps> = ({
@@ -24,7 +25,8 @@ export const GameView: React.FC<GameViewProps> = ({
   selectedCar = SUPER_CARS[0],
   onOpenGarage,
   sharedHost,
-  isInitialPhoneConnected = false
+  isInitialPhoneConnected = false,
+  initialOpenMultiplayer = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -46,7 +48,8 @@ export const GameView: React.FC<GameViewProps> = ({
   });
 
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
-  const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
+  const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(initialOpenMultiplayer);
+  const [mpUsername, setMpUsername] = useState<string>('Racer_' + Math.floor(Math.random() * 900 + 100));
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(isInitialPhoneConnected);
   const [ping, setPing] = useState<number>(0);
@@ -182,12 +185,26 @@ export const GameView: React.FC<GameViewProps> = ({
 
   // Multiplayer Room Connection
   const startMultiplayer = (asHost: boolean) => {
-    const mp = new MultiplayerRoomManager(mpRoomCode);
+    const hexColor = '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0');
+    const mp = new MultiplayerRoomManager(
+      mpRoomCode,
+      mpUsername.trim() || ('Racer_' + Math.floor(Math.random() * 900 + 100)),
+      selectedCar.id,
+      hexColor
+    );
     mpManagerRef.current = mp;
 
     mp.init(asHost, {
-      onPlayerJoined: () => setOpponents(mp.getOpponentsList()),
-      onPlayerLeft: () => setOpponents(mp.getOpponentsList()),
+      onPlayerJoined: (player) => {
+        const list = mp.getOpponentsList();
+        setOpponents(list);
+        engineRef.current?.syncOpponents(list);
+      },
+      onPlayerLeft: () => {
+        const list = mp.getOpponentsList();
+        setOpponents(list);
+        engineRef.current?.syncOpponents(list);
+      },
       onPlayerUpdate: () => {
         const list = mp.getOpponentsList();
         setOpponents(list);
@@ -198,6 +215,14 @@ export const GameView: React.FC<GameViewProps> = ({
 
     setIsMpConnected(true);
     setIsMpModalOpen(false);
+  };
+
+  const leaveMultiplayer = () => {
+    mpManagerRef.current?.destroy();
+    mpManagerRef.current = null;
+    setIsMpConnected(false);
+    setOpponents([]);
+    engineRef.current?.syncOpponents([]);
   };
 
   // Smooth Keyboard Controls
@@ -414,6 +439,56 @@ export const GameView: React.FC<GameViewProps> = ({
         </button>
       </div>
 
+      {/* Live Multiplayer Race Hub (Top Right) */}
+      {isMpConnected && (
+        <div className="absolute top-16 right-4 z-40 glass-panel p-3 rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl shadow-purple-950/40 pointer-events-auto min-w-[220px]">
+          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-2 border-b border-white/10 pb-1.5">
+            <span className="flex items-center gap-1.5 text-purple-300">
+              <Globe className="w-3.5 h-3.5 text-purple-400" />
+              <span>ROOM: {mpRoomCode}</span>
+            </span>
+            <button
+              onClick={leaveMultiplayer}
+              className="text-[10px] text-rose-400 hover:text-rose-300 font-mono px-2 py-0.5 rounded bg-rose-500/20 active:bg-rose-500/40 border border-rose-500/30"
+              title="Leave Multiplayer Room"
+            >
+              LEAVE
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            {/* Local Player */}
+            <div className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-cyan-500/15 border border-cyan-500/30">
+              <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                YOU ({selectedCar.name})
+              </span>
+              <span className="font-mono text-cyan-200">{telemetry.speedKmh} KM/H</span>
+            </div>
+
+            {/* Remote Competitors */}
+            {opponents.length === 0 ? (
+              <div className="text-[11px] text-gray-400 italic py-1 px-2 text-center font-mono">
+                Waiting for competitors to join...
+              </div>
+            ) : (
+              opponents.map((opp) => (
+                <div
+                  key={opp.id}
+                  className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white/5 border border-white/10"
+                >
+                  <span className="font-bold flex items-center gap-1.5" style={{ color: opp.color || '#a855f7' }}>
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: opp.color || '#a855f7' }} />
+                    {opp.username}
+                  </span>
+                  <span className="font-mono text-gray-300">{opp.speedKmh} KM/H</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* QR Code Connect Modal */}
       {isQrModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -517,8 +592,8 @@ export const GameView: React.FC<GameViewProps> = ({
 
       {/* Multiplayer Lobby Modal */}
       {isMpModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="glass-panel p-6 rounded-2xl border border-purple-500/40 max-w-md w-full text-white font-racing relative shadow-2xl shadow-purple-950/50">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="glass-panel p-6 rounded-2xl border border-purple-500/40 max-w-md w-full text-white font-racing relative shadow-2xl shadow-purple-950/60">
             <button
               onClick={() => setIsMpModalOpen(false)}
               className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
@@ -533,23 +608,48 @@ export const GameView: React.FC<GameViewProps> = ({
               </h3>
             </div>
             <p className="text-xs text-gray-400 mb-5">
-              Race in real-time against friends on the scenic autumn highway. Opponent positions are mirrored live on the vector minimap.
+              Race in real-time against friends on the 7.6 KM Grand Alpine highway via zero-server P2P WebRTC.
             </p>
 
             <div className="space-y-4">
+              {/* Driver Handle */}
               <div>
                 <label className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
-                  Room Code (6 Digits)
+                  Driver Name
                 </label>
+                <input
+                  type="text"
+                  maxLength={16}
+                  value={mpUsername}
+                  onChange={(e) => setMpUsername(e.target.value)}
+                  className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2 text-sm font-display font-bold text-white tracking-wider focus:outline-none focus:border-purple-400"
+                  placeholder="Enter your racer tag"
+                />
+              </div>
+
+              {/* Room Code */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] uppercase font-bold text-gray-400">
+                    Room Code (6 Characters)
+                  </label>
+                  <button
+                    onClick={() => setMpRoomCode(roomId)}
+                    className="text-[10px] text-cyan-400 hover:underline font-mono"
+                  >
+                    Use Gyro Room ({roomId})
+                  </button>
+                </div>
                 <input
                   type="text"
                   maxLength={6}
                   value={mpRoomCode}
                   onChange={(e) => setMpRoomCode(e.target.value.toUpperCase())}
-                  className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2.5 text-lg font-display font-bold text-cyan-300 tracking-wider text-center focus:outline-none focus:border-cyan-400 uppercase"
+                  className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2.5 text-lg font-display font-bold text-cyan-300 tracking-widest text-center focus:outline-none focus:border-cyan-400 uppercase"
                 />
               </div>
 
+              {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   onClick={() => startMultiplayer(true)}
@@ -564,6 +664,17 @@ export const GameView: React.FC<GameViewProps> = ({
                   Join Room
                 </button>
               </div>
+
+              {isMpConnected && (
+                <div className="pt-2 border-t border-white/10">
+                  <button
+                    onClick={leaveMultiplayer}
+                    className="w-full py-2 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-bold uppercase tracking-wider"
+                  >
+                    Disconnect from {mpRoomCode}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

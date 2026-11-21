@@ -31,6 +31,7 @@ export const App: React.FC = () => {
   });
 
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
+  const [openMpOnStart, setOpenMpOnStart] = useState<boolean>(false);
   const hostRef = useRef<WebRTCHost | null>(null);
 
   useEffect(() => {
@@ -71,12 +72,18 @@ export const App: React.FC = () => {
     return (
       <HomeView
         selectedCar={selectedCar}
-        onStartRacing={() => setGameState('racing')}
+        onStartRacing={() => {
+          setOpenMpOnStart(false);
+          setGameState('racing');
+        }}
         onOpenGarage={() => setGameState('garage')}
         onSelectCar={(car) => setSelectedCar(car)}
         roomId={roomId}
         isPhoneConnected={isPhoneConnected}
-        onOpenMultiplayer={() => setGameState('racing')}
+        onOpenMultiplayer={() => {
+          setOpenMpOnStart(true);
+          setGameState('racing');
+        }}
       />
     );
   }
@@ -101,9 +108,13 @@ export const App: React.FC = () => {
       roomId={roomId}
       selectedCar={selectedCar}
       onOpenGarage={() => setGameState('garage')}
-      onExit={() => setGameState('home')}
+      onExit={() => {
+        setOpenMpOnStart(false);
+        setGameState('home');
+      }}
       sharedHost={hostRef.current}
       isInitialPhoneConnected={isPhoneConnected}
+      initialOpenMultiplayer={openMpOnStart}
     />
   );
 };
