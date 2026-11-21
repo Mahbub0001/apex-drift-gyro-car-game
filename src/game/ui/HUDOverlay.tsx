@@ -76,10 +76,13 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
           {telemetry.isDrifting && (
             <div className="flex flex-col items-center animate-bounce">
-              <span className="text-xs uppercase font-bold tracking-widest text-purple-400 drop-shadow">
-                DRIFTING
-              </span>
-              <span className="text-2xl font-display font-bold text-purple-300 drop-shadow-md">
+              <div className="flex items-center space-x-1 px-3 py-0.5 rounded-full bg-purple-500/30 border border-purple-400/60 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+                <Flame className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
+                <span className="text-xs uppercase font-extrabold tracking-widest text-purple-200">
+                  DRIFT COMBO {Math.min(4.0, 1.0 + (telemetry.driftScore / 3000) * 0.5).toFixed(1)}x
+                </span>
+              </div>
+              <span className="text-3xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-400 drop-shadow-[0_2px_12px_rgba(168,85,247,0.8)] mt-0.5">
                 +{telemetry.driftScore} PTS
               </span>
             </div>
@@ -103,8 +106,8 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
         </div>
       </div>
 
-      {/* 3. Bottom Left: Interactive Vector Radar Minimap */}
-      <div className="absolute bottom-6 left-6">
+      {/* 3. Bottom Left: Interactive Vector Radar Minimap & Dynamic G-Force Meter */}
+      <div className="absolute bottom-6 left-6 flex items-end space-x-3">
         <Minimap
           playerPos={playerPos}
           playerHeading={playerHeading}
@@ -112,6 +115,29 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
           traffic={traffic}
           opponents={opponents}
         />
+
+        {/* Circular Telemetry G-Force Meter */}
+        <div className="glass-panel p-2.5 rounded-2xl border border-cyan-500/30 flex flex-col items-center justify-center text-center shadow-xl shadow-black/60 pointer-events-auto h-28 w-24">
+          <span className="text-[9px] uppercase font-bold tracking-widest text-gray-400 mb-1">
+            G-FORCE
+          </span>
+          <div className="relative w-14 h-14 rounded-full border border-white/20 flex items-center justify-center bg-black/40">
+            {/* Axis crosshair */}
+            <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
+            <div className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
+            <div className="w-8 h-8 rounded-full border border-dashed border-white/10" />
+            {/* Dynamic G-Ball */}
+            <div
+              className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#00f2fe] transition-transform duration-75"
+              style={{
+                transform: `translate(${Math.max(-20, Math.min(20, -input.steer * (telemetry.speedKmh / 160) * 20))}px, ${Math.max(-20, Math.min(20, (input.brake - input.throttle) * 16))}px)`
+              }}
+            />
+          </div>
+          <span className="text-[10px] font-mono font-bold text-cyan-300 mt-1">
+            {(Math.sqrt(Math.pow(input.steer * (telemetry.speedKmh / 160) * 1.25, 2) + Math.pow((input.throttle - input.brake) * 0.85, 2))).toFixed(2)} G
+          </span>
+        </div>
       </div>
 
       {/* 4. Bottom Right: Tachometer, Speedometer, Damage & Nitro */}

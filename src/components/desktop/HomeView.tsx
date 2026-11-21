@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { SuperCarConfig, SUPER_CARS } from '../../types';
+import { SoundEngine } from '../../game/audio/SoundEngine';
 import {
   Play,
   Warehouse,
@@ -50,6 +51,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [activeModal, setActiveModal] = useState<'none' | 'controls' | 'settings' | 'gyro'>('none');
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const soundRef = useRef<SoundEngine | null>(null);
+
+  useEffect(() => {
+    const sound = new SoundEngine();
+    soundRef.current = sound;
+    return () => {
+      sound.dispose();
+    };
+  }, []);
+
+  const playClick = () => {
+    soundRef.current?.init();
+    soundRef.current?.playUiClick();
+  };
+
+  const playHover = () => {
+    soundRef.current?.playUiHover();
+  };
 
   // QR Code State
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -203,7 +222,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* 1. START RACE BUTTON (HERO CTA) */}
           <button
-            onClick={onStartRacing}
+            onClick={() => {
+              playClick();
+              onStartRacing();
+            }}
+            onMouseEnter={playHover}
             className="group relative flex items-center justify-between px-6 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 bg-[length:200%_auto] hover:bg-right transition-all duration-500 shadow-xl shadow-cyan-500/25 border border-cyan-300/40 text-left active:scale-[0.98]"
           >
             <div>
@@ -221,7 +244,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* 2. HYPERCAR SHOWROOM */}
           <button
-            onClick={onOpenGarage}
+            onClick={() => {
+              playClick();
+              onOpenGarage();
+            }}
+            onMouseEnter={playHover}
             className="group flex items-center justify-between px-5 py-3.5 rounded-xl glass-panel border border-white/10 hover:border-amber-500/40 hover:bg-amber-500/10 transition-all text-left active:scale-[0.99]"
           >
             <div className="flex items-center space-x-3.5">
@@ -242,7 +269,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* 3. MULTIPLAYER P2P LOBBY */}
           <button
-            onClick={onOpenMultiplayer}
+            onClick={() => {
+              playClick();
+              onOpenMultiplayer();
+            }}
+            onMouseEnter={playHover}
             className="group flex items-center justify-between px-5 py-3.5 rounded-xl glass-panel border border-white/10 hover:border-purple-500/40 hover:bg-purple-500/10 transition-all text-left active:scale-[0.99]"
           >
             <div className="flex items-center space-x-3.5">

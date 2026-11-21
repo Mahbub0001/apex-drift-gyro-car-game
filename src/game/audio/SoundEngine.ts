@@ -483,6 +483,188 @@ export class SoundEngine {
     }
   }
 
+  // 10. Interactive Race Countdown Beeps (3... 2... 1... GO!)
+  public playCountdownBeep(isGo: boolean = false) {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      if (!isGo) {
+        // Red lights: Crisp, focused 480 Hz beep
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(480, now);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain!);
+        osc.start(now);
+        osc.stop(now + 0.18);
+      } else {
+        // Green light: Triumphant dual-harmonic 960 Hz + 1440 Hz chord
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(960, now);
+        gain.gain.setValueAtTime(0.48, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+        const osc2 = this.ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1440, now);
+        const gain2 = this.ctx.createGain();
+        gain2.gain.setValueAtTime(0.32, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+        osc.connect(gain);
+        osc2.connect(gain2);
+        gain.connect(this.masterGain!);
+        gain2.connect(this.masterGain!);
+
+        osc.start(now);
+        osc2.start(now);
+        osc.stop(now + 0.58);
+        osc2.stop(now + 0.58);
+      }
+    } catch (_) {}
+  }
+
+  // 11. Interactive UI Click Feedback
+  public playUiClick() {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(400, now + 0.04);
+
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } catch (_) {}
+  }
+
+  // 12. Interactive UI Hover Tick
+  public playUiHover() {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, now);
+
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now);
+      osc.stop(now + 0.025);
+    } catch (_) {}
+  }
+
+  // 13. Supercar Throttle Rev Burst (Used in Showroom / Starting Grid)
+  public playRevPulse() {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const revOsc = this.ctx.createOscillator();
+      const revGain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      revOsc.type = 'sawtooth';
+      revOsc.frequency.setValueAtTime(55, now);
+      revOsc.frequency.exponentialRampToValueAtTime(260, now + 0.28);
+      revOsc.frequency.exponentialRampToValueAtTime(75, now + 0.75);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(220, now);
+      filter.frequency.exponentialRampToValueAtTime(1800, now + 0.28);
+      filter.frequency.exponentialRampToValueAtTime(320, now + 0.75);
+
+      revGain.gain.setValueAtTime(0.42, now);
+      revGain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+
+      revOsc.connect(filter);
+      filter.connect(revGain);
+      revGain.connect(this.masterGain!);
+
+      revOsc.start(now);
+      revOsc.stop(now + 0.85);
+
+      // Follow up with exhaust pop at the tail
+      setTimeout(() => this.triggerBackfireCrackle(), 380);
+    } catch (_) {}
+  }
+
+  // 14. Dual-Tone European Supercar Horn
+  public playHorn() {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'triangle';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(430, now);
+      osc2.frequency.setValueAtTime(510, now);
+
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.36);
+      osc2.stop(now + 0.36);
+    } catch (_) {}
+  }
+
+  // 15. Rewarding Drift Level-Up Chime
+  public playDriftChime() {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const freqs = [659.25, 880, 1174.66]; // E5, A5, D6
+      freqs.forEach((freq, idx) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        const t = now + idx * 0.08;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain!);
+        osc.start(t);
+        osc.stop(t + 0.38);
+      });
+    } catch (_) {}
+  }
+
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     if (this.masterGain && this.ctx) {

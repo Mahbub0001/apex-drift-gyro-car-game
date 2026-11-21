@@ -7,6 +7,7 @@ export interface ControllerInput {
   reset: boolean;       // reset car position
   cameraSwitch: boolean;// toggle camera view
   angleDegrees: number; // raw tilt angle for HUD display
+  horn?: boolean;       // honk supercar horn
   timestamp: number;
 }
 

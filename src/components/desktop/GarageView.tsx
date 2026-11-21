@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SUPER_CARS, SuperCarConfig } from '../../types';
-import { Zap, Gauge, Award, Flame, Play, QrCode, ShieldCheck } from 'lucide-react';
+import { SoundEngine } from '../../game/audio/SoundEngine';
+import { Zap, Gauge, Award, Flame, Play, QrCode, ShieldCheck, Palette, Volume2 } from 'lucide-react';
 
 interface GarageViewProps {
   onSelectCar: (car: SuperCarConfig) => void;
@@ -10,6 +11,16 @@ interface GarageViewProps {
   onBackToHome?: () => void;
 }
 
+const PAINT_SWATCHES = [
+  { name: 'Rosso Corsa', hex: 0xd90429, css: '#d90429' },
+  { name: 'Cyber Cyan', hex: 0x00f2fe, css: '#00f2fe' },
+  { name: 'Obsidian Black', hex: 0x121418, css: '#121418' },
+  { name: 'Alpine White', hex: 0xf8f9fa, css: '#f8f9fa' },
+  { name: 'Ultraviolet', hex: 0x7928ca, css: '#7928ca' },
+  { name: 'Sunset Gold', hex: 0xffb703, css: '#ffb703' },
+  { name: 'Acid Green', hex: 0x10b981, css: '#10b981' },
+];
+
 export const GarageView: React.FC<GarageViewProps> = ({
   onSelectCar,
   selectedCar,
@@ -18,13 +29,43 @@ export const GarageView: React.FC<GarageViewProps> = ({
   onBackToHome
 }) => {
   const [activeCar, setActiveCar] = useState<SuperCarConfig>(selectedCar);
+  const [isRevving, setIsRevving] = useState<boolean>(false);
+  const soundRef = useRef<SoundEngine | null>(null);
+
+  useEffect(() => {
+    const sound = new SoundEngine();
+    soundRef.current = sound;
+    return () => {
+      sound.dispose();
+    };
+  }, []);
 
   const handleCarClick = (car: SuperCarConfig) => {
+    soundRef.current?.init();
+    soundRef.current?.playUiClick();
     setActiveCar(car);
   };
 
   const handleDriveClick = () => {
+    soundRef.current?.init();
+    soundRef.current?.playUiClick();
     onSelectCar(activeCar);
+  };
+
+  const handleRevEngine = () => {
+    soundRef.current?.init();
+    soundRef.current?.playRevPulse();
+    setIsRevving(true);
+    setTimeout(() => setIsRevving(false), 900);
+  };
+
+  const handlePaintSelect = (hex: number) => {
+    soundRef.current?.init();
+    soundRef.current?.playUiClick();
+    setActiveCar((prev) => ({
+      ...prev,
+      bodyColorHex: hex
+    }));
   };
 
   return (
@@ -95,16 +136,28 @@ export const GarageView: React.FC<GarageViewProps> = ({
                 <div className="w-full h-36 rounded-xl relative overflow-hidden flex items-center justify-center mb-3 bg-black/60 border border-white/5">
                   {/* Glowing Underglow Effect */}
                   <div
-                    className="absolute -bottom-4 inset-x-4 h-12 blur-lg opacity-70 transition-opacity"
-                    style={{ backgroundColor: `#${car.bodyColorHex.toString(16).padStart(6, '0')}` }}
+                    className="absolute -bottom-4 inset-x-4 h-12 blur-lg opacity-75 transition-colors duration-300"
+                    style={{
+                      backgroundColor: `#${(isSelected ? activeCar.bodyColorHex : car.bodyColorHex).toString(16).padStart(6, '0')}`
+                    }}
                   />
 
                   {/* Supercar Photo Cutout */}
                   <img
                     src={`/images/cars/${car.id}.jpg`}
                     alt={car.name}
-                    className="w-full h-full object-cover object-center transform group-hover:scale-110 transition-transform duration-500 rounded-lg"
+                    className={`w-full h-full object-cover object-center transform group-hover:scale-110 transition-transform duration-500 rounded-lg ${
+                      isSelected && isRevving ? 'animate-pulse scale-105' : ''
+                    }`}
                   />
+
+                  {/* Dynamic Exhaust Flame Flare when Revving */}
+                  {isSelected && isRevving && (
+                    <div className="absolute inset-x-0 bottom-1 flex justify-center space-x-12 pointer-events-none z-30">
+                      <div className="w-3.5 h-7 bg-gradient-to-t from-cyan-400 via-amber-400 to-transparent rounded-full blur-[1px] animate-ping" />
+                      <div className="w-3.5 h-7 bg-gradient-to-t from-cyan-400 via-amber-400 to-transparent rounded-full blur-[1px] animate-ping" />
+                    </div>
+                  )}
 
                   {/* Top-Right Badge */}
                   <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-sm text-[9px] font-bold text-gray-300 border border-white/10">
@@ -129,6 +182,52 @@ export const GarageView: React.FC<GarageViewProps> = ({
             );
           })}
         </div>
+      </div>
+
+      {/* Interactive Customization Studio: Real-time Paint Swatches & Rev Throttle Button */}
+      <div className="relative z-10 glass-panel px-6 py-3 rounded-2xl border border-white/10 backdrop-blur-md max-w-7xl mx-auto w-full flex flex-wrap items-center justify-between shadow-xl my-1">
+        {/* 7 Paint Swatches */}
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1.5 text-xs font-bold text-gray-300 font-display uppercase tracking-wider">
+            <Palette className="w-4 h-4 text-cyan-400" />
+            <span>CUSTOM PAINT FINISH:</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            {PAINT_SWATCHES.map((swatch) => {
+              const isActive = activeCar.bodyColorHex === swatch.hex;
+              return (
+                <button
+                  key={swatch.name}
+                  onClick={() => handlePaintSelect(swatch.hex)}
+                  className={`w-7 h-7 rounded-full transition-all duration-200 transform hover:scale-125 flex items-center justify-center relative ${
+                    isActive
+                      ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#080b12] shadow-[0_0_12px_rgba(255,255,255,0.7)]'
+                      : 'opacity-70 hover:opacity-100 hover:shadow-lg'
+                  }`}
+                  style={{ backgroundColor: swatch.css }}
+                  title={`${swatch.name} (${swatch.css})`}
+                >
+                  {isActive && <div className="w-2 h-2 rounded-full bg-white shadow-sm" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Interactive "REV V8 ENGINE" Button */}
+        <button
+          onClick={handleRevEngine}
+          className={`flex items-center space-x-2 px-5 py-2 rounded-xl border font-display text-xs font-extrabold uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-lg ${
+            isRevving
+              ? 'bg-rose-600 border-rose-400 text-white shadow-rose-500/50 animate-pulse scale-105'
+              : 'bg-black/60 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400 shadow-amber-500/20'
+          }`}
+          title="Rev the V8 twin-turbo engine"
+        >
+          <Flame className={`w-4 h-4 ${isRevving ? 'text-white animate-spin' : 'text-amber-400'}`} />
+          <span>{isRevving ? '🔥 8,500 RPM THROTTLE POP!' : 'REV V8 ENGINE'}</span>
+          <Volume2 className="w-3.5 h-3.5 opacity-60 ml-0.5" />
+        </button>
       </div>
 
       {/* Bottom Panel: Selected Car Specifications & Launch Button */}

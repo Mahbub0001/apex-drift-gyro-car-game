@@ -14,6 +14,8 @@ interface PhysicalWheelProps {
   gear: number | string;
   rpm: number;
   size?: number;
+  onHonk?: () => void;
+  isHonking?: boolean;
 }
 
 const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
@@ -21,7 +23,9 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
   speedKmh,
   gear,
   rpm,
-  size = 230
+  size = 230,
+  onHonk,
+  isHonking = false
 }) => {
   // 10-LED sequential shift light array: 4 Green, 3 Amber, 3 Red
   const activeLeds = Math.min(10, Math.max(0, Math.floor(((rpm - 1500) / 7000) * 10)));
@@ -112,11 +116,25 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
 
         {/* Central Horn Hub & Digital Telemetry Screen */}
         <div
-          className="relative rounded-full flex flex-col items-center justify-center border-2 border-white/20 p-2 text-center shadow-2xl z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            onHonk?.();
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            onHonk?.();
+          }}
+          className={`relative rounded-full flex flex-col items-center justify-center border-2 p-2 text-center shadow-2xl z-10 cursor-pointer active:scale-95 transition-all duration-75 ${
+            isHonking
+              ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-[0_0_25px_#f59e0b]'
+              : 'border-white/20 hover:border-cyan-400/60'
+          }`}
           style={{
             width: size * 0.62,
             height: size * 0.62,
-            background: 'radial-gradient(circle at 40% 40%, #1f232b 0%, #121419 75%, #0a0b0d 100%)'
+            background: isHonking
+              ? 'radial-gradient(circle at 40% 40%, #2e2612 0%, #1c1608 75%, #0f0c05 100%)'
+              : 'radial-gradient(circle at 40% 40%, #1f232b 0%, #121419 75%, #0a0b0d 100%)'
           }}
         >
           {/* Shift Light Array (F1 / GT3 sequential 10-LED bar) */}
@@ -158,14 +176,19 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
             </span>
           </div>
 
-          {/* Realtime Steering Angle Readout */}
+          {/* Realtime Steering Angle Readout & Horn Label */}
           <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400 leading-none">
-            {angleDegrees === 0
+            {isHonking
+              ? '📢 HORN'
+              : angleDegrees === 0
               ? '● CENTER'
               : angleDegrees > 0
               ? `▶ +${Math.abs(angleDegrees)}°`
               : `◀ -${Math.abs(angleDegrees)}°`}
           </div>
+          <span className="text-[8px] text-gray-500 uppercase tracking-widest font-mono mt-0.5">
+            TAP FOR HORN
+          </span>
         </div>
       </div>
     </div>
@@ -197,10 +220,57 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
   const [brake, setBrake] = useState<number>(0);
   const [handbrake, setHandbrake] = useState<boolean>(false);
   const [nitro, setNitro] = useState<boolean>(false);
+  const [isHonking, setIsHonking] = useState<boolean>(false);
 
   const controllerRef = useRef<WebRTCController | null>(null);
   const throttleContainerRef = useRef<HTMLDivElement>(null);
   const brakeContainerRef = useRef<HTMLDivElement>(null);
+
+  const triggerHaptic = (ms: number = 30) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(ms);
+    }
+  };
+
+  const triggerHorn = useCallback(() => {
+    setIsHonking(true);
+    triggerHaptic(45);
+
+    // Acoustic tone feedback directly on smartphone
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(460, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.28);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    } catch (_) {}
+
+    // Send instant packet with horn: true
+    if (controllerRef.current) {
+      controllerRef.current.sendInput({
+        steer: steerNormalized,
+        throttle,
+        brake,
+        handbrake,
+        nitro,
+        reset: false,
+        cameraSwitch: false,
+        horn: true,
+        angleDegrees,
+        timestamp: Date.now()
+      });
+    }
+
+    setTimeout(() => {
+      setIsHonking(false);
+    }, 320);
+  }, [steerNormalized, throttle, brake, handbrake, nitro, angleDegrees]);
 
   // Initialize WebRTC connection
   useEffect(() => {
@@ -239,6 +309,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
         nitro,
         reset: false,
         cameraSwitch: false,
+        horn: isHonking,
         angleDegrees,
         timestamp: Date.now()
       };
@@ -246,7 +317,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     }, 1000 / 60);
 
     return () => clearInterval(interval);
-  }, [isConnected, steerNormalized, throttle, brake, handbrake, nitro, angleDegrees]);
+  }, [isConnected, steerNormalized, throttle, brake, handbrake, nitro, isHonking, angleDegrees]);
 
   // Touch handlers for Throttle Slider
   const handleThrottleTouch = useCallback((e: React.TouchEvent | React.MouseEvent) => {
@@ -268,12 +339,6 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     const value = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
     setBrake(Number(value.toFixed(2)));
   }, []);
-
-  const triggerHaptic = (ms: number = 30) => {
-    if ('vibrate' in navigator) {
-      navigator.vibrate(ms);
-    }
-  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -412,6 +477,8 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
             gear={hostTelemetry.gear}
             rpm={hostTelemetry.rpm}
             size={245}
+            onHonk={triggerHorn}
+            isHonking={isHonking}
           />
 
           {/* Quick Actions (Camera, Reset, Nitro) */}
@@ -618,6 +685,8 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
             gear={hostTelemetry.gear}
             rpm={hostTelemetry.rpm}
             size={215}
+            onHonk={triggerHorn}
+            isHonking={isHonking}
           />
 
           {/* Quick Utility Actions */}

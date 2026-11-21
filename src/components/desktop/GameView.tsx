@@ -80,12 +80,60 @@ export const GameView: React.FC<GameViewProps> = ({
   const [isLetterboxed, setIsLetterboxed] = useState<boolean>(false);
   const [nearMissActive, setNearMissActive] = useState<boolean>(false);
 
+  // F1 Starting Countdown (3... 2... 1... GO!)
+  const [countdown, setCountdown] = useState<number | 'GO!' | null>(3);
+  const countdownRef = useRef<number | 'GO!' | null>(3);
+  const lastHornRef = useRef<boolean>(false);
+
   // Initialize Sound Engine
   useEffect(() => {
     const sound = new SoundEngine();
     soundRef.current = sound;
     return () => {
       sound.dispose();
+    };
+  }, []);
+
+  // F1 Starting Grid Countdown Timer
+  useEffect(() => {
+    countdownRef.current = 3;
+    setCountdown(3);
+
+    // Initial beep at 3
+    const t0 = setTimeout(() => {
+      soundRef.current?.init();
+      soundRef.current?.playCountdownBeep(false);
+    }, 150);
+
+    const t1 = setTimeout(() => {
+      countdownRef.current = 2;
+      setCountdown(2);
+      soundRef.current?.playCountdownBeep(false);
+    }, 1150);
+
+    const t2 = setTimeout(() => {
+      countdownRef.current = 1;
+      setCountdown(1);
+      soundRef.current?.playCountdownBeep(false);
+    }, 2150);
+
+    const t3 = setTimeout(() => {
+      countdownRef.current = 'GO!';
+      setCountdown('GO!');
+      soundRef.current?.playCountdownBeep(true);
+    }, 3150);
+
+    const t4 = setTimeout(() => {
+      countdownRef.current = null;
+      setCountdown(null);
+    }, 4200);
+
+    return () => {
+      clearTimeout(t0);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
     };
   }, []);
 
@@ -255,6 +303,7 @@ export const GameView: React.FC<GameViewProps> = ({
       const nitro = !!(keys['ShiftLeft'] || keys['ShiftRight']);
       const cameraSwitch = !!keys['KeyC'];
       const reset = !!keys['KeyR'];
+      const horn = !!keys['KeyH'];
 
       setActiveInputSource('keyboard');
       inputRef.current = {
@@ -265,6 +314,7 @@ export const GameView: React.FC<GameViewProps> = ({
         nitro,
         reset,
         cameraSwitch,
+        horn,
         angleDegrees: Math.round(steer * 45),
         timestamp: Date.now()
       };
@@ -308,7 +358,20 @@ export const GameView: React.FC<GameViewProps> = ({
       const delta = Math.min(0.05, (currentTime - lastTime) / 1000);
       lastTime = currentTime;
 
-      const currentInput = inputRef.current;
+      const rawInput = inputRef.current;
+      const currentInput = { ...rawInput };
+
+      // Handle supercar horn
+      if (rawInput.horn && !lastHornRef.current) {
+        soundRef.current?.playHorn();
+      }
+      lastHornRef.current = !!rawInput.horn;
+
+      // Lock car at starting line during F1 countdown (3... 2... 1...)
+      if (countdownRef.current !== null && countdownRef.current !== 'GO!') {
+        currentInput.throttle = 0;
+        currentInput.nitro = false;
+      }
 
       // 1. Advance Physics & 3D Engine Frame
       const currentTelemetry = engine.update(delta, currentInput);
@@ -377,6 +440,72 @@ export const GameView: React.FC<GameViewProps> = ({
       {/* 3D WebGL Canvas */}
       <canvas ref={canvasRef} className="w-full h-full block" />
 
+      {/* High-Speed Radial Warp / Speed Streaks Effect (> 150 KM/H or Nitro) */}
+      {(telemetry.speedKmh > 150 || inputRef.current.nitro) && (
+        <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden mix-blend-screen transition-opacity duration-200">
+          <svg className="w-full h-full opacity-65" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+            <defs>
+              <radialGradient id="warpGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="transparent" />
+                <stop offset="65%" stopColor="rgba(0, 242, 254, 0.08)" />
+                <stop offset="100%" stopColor="rgba(0, 242, 254, 0.4)" />
+              </radialGradient>
+            </defs>
+            <rect width="1000" height="1000" fill="url(#warpGrad)" />
+            <line x1="500" y1="500" x2="0" y2="80" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
+            <line x1="500" y1="500" x2="0" y2="920" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
+            <line x1="500" y1="500" x2="1000" y2="80" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
+            <line x1="500" y1="500" x2="1000" y2="920" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
+            <line x1="500" y1="500" x2="150" y2="0" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
+            <line x1="500" y1="500" x2="850" y2="0" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
+            <line x1="500" y1="500" x2="150" y2="1000" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
+            <line x1="500" y1="500" x2="850" y2="1000" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
+          </svg>
+          <div className="absolute inset-0 shadow-[inset_0_0_120px_rgba(0,242,254,0.35)]" />
+        </div>
+      )}
+
+      {/* F1 5-Light Starting Gantry Countdown (3... 2... 1... GO!) */}
+      {countdown !== null && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none select-none">
+          {/* Carbon Fiber Gantry Light Housing */}
+          <div className="glass-panel px-7 py-3.5 rounded-3xl border-2 border-white/20 bg-black/85 shadow-[0_0_50px_rgba(0,0,0,0.95)] flex items-center space-x-4">
+            {[1, 2, 3, 4, 5].map((lightIdx) => {
+              const isRed = countdown === 3 ? lightIdx <= 2 : countdown === 2 ? lightIdx <= 4 : countdown === 1 ? true : false;
+              const isGo = countdown === 'GO!';
+              return (
+                <div key={lightIdx} className="flex flex-col items-center">
+                  <div
+                    className={`w-9 h-9 rounded-full border-2 transition-all duration-150 ${
+                      isGo
+                        ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_35px_#10b981]'
+                        : isRed
+                        ? 'bg-rose-600 border-rose-400 shadow-[0_0_30px_#ef4444]'
+                        : 'bg-zinc-900 border-zinc-700 shadow-inner'
+                    }`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Sub-label banner */}
+          <div className="mt-3 px-6 py-1.5 rounded-full bg-black/80 border border-white/10 backdrop-blur-md">
+            <span className={`font-display font-black tracking-widest text-2xl uppercase drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)] ${
+              countdown === 'GO!' ? 'text-emerald-400 animate-pulse text-3xl' : 'text-rose-400'
+            }`}>
+              {countdown === 'GO!'
+                ? 'LIGHTS OUT & AWAY WE GO!'
+                : countdown === 3
+                ? 'STAGE 3 • GET READY'
+                : countdown === 2
+                ? 'STAGE 2 • REV ENGINES'
+                : 'STAGE 1 • HOLD BRAKE'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Modern In-Game Racing HUD with Vector Radar Minimap */}
       {engineRef.current && (
         <HUDOverlay
@@ -398,7 +527,11 @@ export const GameView: React.FC<GameViewProps> = ({
       <div className="absolute top-4 left-4 z-40 flex items-center space-x-2">
         {onExit && (
           <button
-            onClick={onExit}
+            onClick={() => {
+              soundRef.current?.playUiClick();
+              onExit();
+            }}
+            onMouseEnter={() => soundRef.current?.playUiHover()}
             className="flex items-center space-x-1.5 glass-panel px-3 py-2 rounded-xl border border-white/10 text-xs font-bold font-racing uppercase tracking-wider text-gray-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all pointer-events-auto shadow-lg"
             title="Return to Main Menu"
           >
@@ -407,7 +540,11 @@ export const GameView: React.FC<GameViewProps> = ({
         )}
 
         <button
-          onClick={() => setIsQrModalOpen(true)}
+          onClick={() => {
+            soundRef.current?.playUiClick();
+            setIsQrModalOpen(true);
+          }}
+          onMouseEnter={() => soundRef.current?.playUiHover()}
           className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-cyan-500/30 text-xs font-bold font-racing uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
         >
           <QrCode className="w-4 h-4 text-cyan-400" />
@@ -415,7 +552,11 @@ export const GameView: React.FC<GameViewProps> = ({
         </button>
 
         <button
-          onClick={onOpenGarage}
+          onClick={() => {
+            soundRef.current?.playUiClick();
+            onOpenGarage?.();
+          }}
+          onMouseEnter={() => soundRef.current?.playUiHover()}
           className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-amber-500/30 text-xs font-bold font-racing uppercase tracking-wider text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
         >
           <Warehouse className="w-4 h-4 text-amber-400" />
@@ -423,7 +564,11 @@ export const GameView: React.FC<GameViewProps> = ({
         </button>
 
         <button
-          onClick={() => setIsMpModalOpen(true)}
+          onClick={() => {
+            soundRef.current?.playUiClick();
+            setIsMpModalOpen(true);
+          }}
+          onMouseEnter={() => soundRef.current?.playUiHover()}
           className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-purple-500/30 text-xs font-bold font-racing uppercase tracking-wider text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
         >
           <Users className="w-4 h-4 text-purple-400" />
