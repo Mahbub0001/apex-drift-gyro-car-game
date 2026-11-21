@@ -2,7 +2,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDeviceOrientation } from '../../hooks/useDeviceOrientation';
 import { WebRTCController } from '../../services/webrtc';
 import { ControllerInput } from '../../types';
-import { RotateCcw, Zap, Flame, ShieldAlert, Wifi, Maximize, Compass } from 'lucide-react';
+import {
+  RotateCcw,
+  Zap,
+  Flame,
+  Maximize,
+  Compass,
+  Smartphone,
+  CheckCircle2,
+  Volume2,
+  Camera,
+  RefreshCw
+} from 'lucide-react';
 
 interface MobileControllerProps {
   roomId: string;
@@ -23,7 +34,7 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
   speedKmh,
   gear,
   rpm,
-  size = 230,
+  size = 240,
   onHonk,
   isHonking = false
 }) => {
@@ -38,9 +49,11 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
     >
       {/* Outer Glow Halo based on Steering */}
       <div
-        className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-300"
+        className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-200"
         style={{
-          boxShadow: `0 0 35px ${Math.abs(angleDegrees) > 10 ? 'rgba(0, 242, 254, 0.22)' : 'rgba(255, 255, 255, 0.06)'}`,
+          boxShadow: `0 0 40px ${
+            Math.abs(angleDegrees) > 10 ? 'rgba(0, 242, 254, 0.28)' : 'rgba(255, 255, 255, 0.08)'
+          }`
         }}
       />
 
@@ -54,7 +67,7 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
           cy="120"
           r="112"
           fill="none"
-          stroke="rgba(255,255,255,0.15)"
+          stroke="rgba(255,255,255,0.18)"
           strokeWidth="2"
           strokeDasharray="4 8"
         />
@@ -67,32 +80,33 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
 
       {/* THE ROTATING PHYSICAL GT3 / SUPERCAR WHEEL */}
       <div
-        className="relative w-full h-full rounded-full flex items-center justify-center transition-transform duration-75 will-change-transform"
+        className="relative w-full h-full rounded-full flex items-center justify-center will-change-transform"
         style={{
           transform: `rotate(${angleDegrees}deg)`,
           transformOrigin: 'center center',
-          boxShadow: '0 16px 40px rgba(0,0,0,0.9), inset 0 2px 4px rgba(255,255,255,0.25), inset 0 -4px 8px rgba(0,0,0,0.9)'
+          boxShadow:
+            '0 18px 45px rgba(0,0,0,0.95), inset 0 2px 4px rgba(255,255,255,0.3), inset 0 -4px 8px rgba(0,0,0,0.9)'
         }}
       >
         {/* Outer Wheel Rim (Molded Dark Perforated Leather / Carbon Ring) */}
         <div
-          className="absolute inset-0 rounded-full border-[18px] border-[#181a20]"
+          className="absolute inset-0 rounded-full border-[20px] border-[#181a20]"
           style={{
-            boxShadow: 'inset 0 0 10px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85)'
+            boxShadow: 'inset 0 0 12px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.85)'
           }}
         />
 
         {/* 12-o'clock Racing Centering Stripe (Bright Cyan Neon) */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-4 h-[18px] bg-cyan-400 rounded-sm shadow-[0_0_12px_#00f2fe] z-20" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-4 h-[20px] bg-cyan-400 rounded-sm shadow-[0_0_12px_#00f2fe] z-20" />
 
         {/* 9-o'clock and 3-o'clock Ergonomic Textured Grips */}
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[22px] h-28 bg-[#1f232b] rounded-r-lg border-r border-cyan-500/30 flex flex-col justify-around py-2 items-center opacity-90 shadow-inner">
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[24px] h-32 bg-[#1f232b] rounded-r-lg border-r border-cyan-500/30 flex flex-col justify-around py-2 items-center opacity-90 shadow-inner">
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
         </div>
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[22px] h-28 bg-[#1f232b] rounded-l-lg border-l border-cyan-500/30 flex flex-col justify-around py-2 items-center opacity-90 shadow-inner">
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[24px] h-32 bg-[#1f232b] rounded-l-lg border-l border-cyan-500/30 flex flex-col justify-around py-2 items-center opacity-90 shadow-inner">
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
           <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
@@ -100,18 +114,18 @@ const PhysicalWheel: React.FC<PhysicalWheelProps> = ({
         </div>
 
         {/* Left Spoke (Brushed Aluminum / Carbon) */}
-        <div className="absolute left-[16px] top-1/2 -translate-y-1/2 w-[56px] h-[34px] bg-gradient-to-r from-[#2a2d36] to-[#1c1e24] rounded-l-md border-t border-b border-white/10 flex items-center justify-center shadow-lg">
-          <div className="w-6 h-3 rounded-full bg-[#121418] border border-white/5" />
+        <div className="absolute left-[16px] top-1/2 -translate-y-1/2 w-[60px] h-[36px] bg-gradient-to-r from-[#2a2d36] to-[#1c1e24] rounded-l-md border-t border-b border-white/10 flex items-center justify-center shadow-lg">
+          <div className="w-7 h-3 rounded-full bg-[#121418] border border-white/5" />
         </div>
 
         {/* Right Spoke */}
-        <div className="absolute right-[16px] top-1/2 -translate-y-1/2 w-[56px] h-[34px] bg-gradient-to-l from-[#2a2d36] to-[#1c1e24] rounded-r-md border-t border-b border-white/10 flex items-center justify-center shadow-lg">
-          <div className="w-6 h-3 rounded-full bg-[#121418] border border-white/5" />
+        <div className="absolute right-[16px] top-1/2 -translate-y-1/2 w-[60px] h-[36px] bg-gradient-to-l from-[#2a2d36] to-[#1c1e24] rounded-r-md border-t border-b border-white/10 flex items-center justify-center shadow-lg">
+          <div className="w-7 h-3 rounded-full bg-[#121418] border border-white/5" />
         </div>
 
         {/* Bottom Spoke */}
-        <div className="absolute bottom-[16px] left-1/2 -translate-x-1/2 w-[34px] h-[52px] bg-gradient-to-t from-[#2a2d36] to-[#1c1e24] rounded-b-md border-l border-r border-white/10 flex flex-col items-center justify-center shadow-lg">
-          <div className="w-3 h-6 rounded-full bg-[#121418] border border-white/5" />
+        <div className="absolute bottom-[16px] left-1/2 -translate-x-1/2 w-[36px] h-[56px] bg-gradient-to-t from-[#2a2d36] to-[#1c1e24] rounded-b-md border-l border-r border-white/10 flex flex-col items-center justify-center shadow-lg">
+          <div className="w-3 h-7 rounded-full bg-[#121418] border border-white/5" />
         </div>
 
         {/* Central Horn Hub & Digital Telemetry Screen */}
@@ -210,7 +224,11 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
   const [currentRoomId, setCurrentRoomId] = useState<string>(roomId);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [ping, setPing] = useState<number>(0);
-  const [hostTelemetry, setHostTelemetry] = useState<{ speedKmh: number; gear: number | string; rpm: number }>({
+  const [hostTelemetry, setHostTelemetry] = useState<{
+    speedKmh: number;
+    gear: number | string;
+    rpm: number;
+  }>({
     speedKmh: 0,
     gear: 'N',
     rpm: 0
@@ -222,9 +240,33 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
   const [nitro, setNitro] = useState<boolean>(false);
   const [isHonking, setIsHonking] = useState<boolean>(false);
 
+  // Forced Landscape Mode fallback (for devices with Android/iOS Auto-Rotate locked)
+  const [forceLandscapeView, setForceLandscapeView] = useState<boolean>(false);
+  const [preferPortraitMode, setPreferPortraitMode] = useState<boolean>(false);
+
   const controllerRef = useRef<WebRTCController | null>(null);
   const throttleContainerRef = useRef<HTMLDivElement>(null);
   const brakeContainerRef = useRef<HTMLDivElement>(null);
+
+  // Persistent reference for instant microsecond packet transmission
+  const inputRef = useRef<ControllerInput>({
+    steer: 0,
+    throttle: 0,
+    brake: 0,
+    handbrake: false,
+    nitro: false,
+    reset: false,
+    cameraSwitch: false,
+    horn: false,
+    angleDegrees: 0,
+    timestamp: Date.now()
+  });
+
+  // Keep inputRef updated synchronously
+  useEffect(() => {
+    inputRef.current.steer = steerNormalized;
+    inputRef.current.angleDegrees = angleDegrees;
+  }, [steerNormalized, angleDegrees]);
 
   const triggerHaptic = (ms: number = 30) => {
     if ('vibrate' in navigator) {
@@ -232,11 +274,26 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     }
   };
 
+  // Immediate event-driven packet transmission (<1ms latency)
+  const dispatchImmediateInput = useCallback(
+    (overrides?: Partial<ControllerInput>) => {
+      if (!controllerRef.current || !isConnected) return;
+      const packet: ControllerInput = {
+        ...inputRef.current,
+        timestamp: Date.now(),
+        ...overrides
+      };
+      controllerRef.current.sendInput(packet);
+    },
+    [isConnected]
+  );
+
   const triggerHorn = useCallback(() => {
     setIsHonking(true);
+    inputRef.current.horn = true;
+    dispatchImmediateInput({ horn: true });
     triggerHaptic(45);
 
-    // Acoustic tone feedback directly on smartphone
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = audioCtx.createOscillator();
@@ -251,26 +308,12 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
       osc.stop(audioCtx.currentTime + 0.3);
     } catch (_) {}
 
-    // Send instant packet with horn: true
-    if (controllerRef.current) {
-      controllerRef.current.sendInput({
-        steer: steerNormalized,
-        throttle,
-        brake,
-        handbrake,
-        nitro,
-        reset: false,
-        cameraSwitch: false,
-        horn: true,
-        angleDegrees,
-        timestamp: Date.now()
-      });
-    }
-
     setTimeout(() => {
       setIsHonking(false);
-    }, 320);
-  }, [steerNormalized, throttle, brake, handbrake, nitro, angleDegrees]);
+      inputRef.current.horn = false;
+      dispatchImmediateInput({ horn: false });
+    }, 300);
+  }, [dispatchImmediateInput]);
 
   // Initialize WebRTC connection
   useEffect(() => {
@@ -296,59 +339,74 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     };
   }, [currentRoomId]);
 
-  // Transmit inputs to desktop at 60 Hz
+  // Continuous 60 Hz Streamer ticker (stable, zero timer churn)
   useEffect(() => {
-    if (!isConnected || !controllerRef.current) return;
+    if (!isConnected) return;
 
     const interval = setInterval(() => {
-      const inputPacket: ControllerInput = {
-        steer: steerNormalized,
-        throttle,
-        brake,
-        handbrake,
-        nitro,
-        reset: false,
-        cameraSwitch: false,
-        horn: isHonking,
-        angleDegrees,
-        timestamp: Date.now()
-      };
-      controllerRef.current?.sendInput(inputPacket);
+      if (controllerRef.current) {
+        inputRef.current.timestamp = Date.now();
+        controllerRef.current.sendInput(inputRef.current);
+      }
     }, 1000 / 60);
 
     return () => clearInterval(interval);
-  }, [isConnected, steerNormalized, throttle, brake, handbrake, nitro, isHonking, angleDegrees]);
+  }, [isConnected]);
 
-  // Touch handlers for Throttle Slider
-  const handleThrottleTouch = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-    if (!throttleContainerRef.current) return;
-    const rect = throttleContainerRef.current.getBoundingClientRect();
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const relativeY = clientY - rect.top;
-    // 0 at bottom, 1 at top
-    const value = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
-    setThrottle(Number(value.toFixed(2)));
-  }, []);
+  // Touch handlers for Throttle Slider with instant dispatch
+  const handleThrottleTouch = useCallback(
+    (e: React.TouchEvent | React.MouseEvent) => {
+      if (!throttleContainerRef.current) return;
+      const rect = throttleContainerRef.current.getBoundingClientRect();
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const relativeY = clientY - rect.top;
+      const value = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
+      const rounded = Number(value.toFixed(2));
+      setThrottle(rounded);
+      inputRef.current.throttle = rounded;
+      dispatchImmediateInput({ throttle: rounded });
+    },
+    [dispatchImmediateInput]
+  );
 
-  // Touch handlers for Brake Slider
-  const handleBrakeTouch = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-    if (!brakeContainerRef.current) return;
-    const rect = brakeContainerRef.current.getBoundingClientRect();
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const relativeY = clientY - rect.top;
-    const value = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
-    setBrake(Number(value.toFixed(2)));
-  }, []);
+  const handleThrottleEnd = useCallback(() => {
+    setThrottle(0);
+    inputRef.current.throttle = 0;
+    dispatchImmediateInput({ throttle: 0 });
+  }, [dispatchImmediateInput]);
+
+  // Touch handlers for Brake Slider with instant dispatch
+  const handleBrakeTouch = useCallback(
+    (e: React.TouchEvent | React.MouseEvent) => {
+      if (!brakeContainerRef.current) return;
+      const rect = brakeContainerRef.current.getBoundingClientRect();
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const relativeY = clientY - rect.top;
+      const value = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
+      const rounded = Number(value.toFixed(2));
+      setBrake(rounded);
+      inputRef.current.brake = rounded;
+      dispatchImmediateInput({ brake: rounded });
+    },
+    [dispatchImmediateInput]
+  );
+
+  const handleBrakeEnd = useCallback(() => {
+    setBrake(0);
+    inputRef.current.brake = 0;
+    dispatchImmediateInput({ brake: 0 });
+  }, [dispatchImmediateInput]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen?.().catch(() => {});
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen?.().catch(() => {});
     }
   };
 
-  const requestLandscape = async () => {
+  const requestFullscreenLandscape = async () => {
+    triggerHaptic(40);
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -365,16 +423,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
   const sendOneShotAction = (action: 'reset' | 'cameraSwitch') => {
     triggerHaptic(40);
-    controllerRef.current?.sendInput({
-      steer: steerNormalized,
-      throttle,
-      brake,
-      handbrake,
-      nitro,
+    dispatchImmediateInput({
       reset: action === 'reset',
-      cameraSwitch: action === 'cameraSwitch',
-      angleDegrees,
-      timestamp: Date.now()
+      cameraSwitch: action === 'cameraSwitch'
     });
   };
 
@@ -401,28 +452,97 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     );
   }
 
-  // Portrait Mode Controller: Full active steering wheel, HUD telemetry, and pedals
-  if (!isLandscape) {
+  // 1. LANDSCAPE PROMPT SCREEN (Shown if phone is currently held in portrait and user hasn't chosen portrait mode)
+  if (!isLandscape && !forceLandscapeView && !preferPortraitMode) {
+    return (
+      <div className="fixed inset-0 bg-[#08090C] z-40 flex flex-col justify-between p-5 text-center select-none text-white font-racing">
+        {/* Top Header */}
+        <div className="flex items-center justify-between glass-panel px-4 py-2.5 rounded-xl border border-white/10">
+          <div className="flex items-center space-x-2">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+              }`}
+            />
+            <span className="text-xs uppercase tracking-wider text-gray-300 font-bold">
+              {isConnected ? `${ping}ms P2P` : 'CONNECTING...'}
+            </span>
+          </div>
+          <span className="text-xs font-mono text-cyan-300 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+            ROOM: {currentRoomId}
+          </span>
+        </div>
+
+        {/* Center Orientation Guide */}
+        <div className="flex-1 flex flex-col items-center justify-center max-w-sm mx-auto my-4">
+          <div className="relative mb-6">
+            <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-400/40 flex items-center justify-center animate-pulse">
+              <RotateCcw className="w-12 h-12 text-cyan-400 animate-spin-slow" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 bg-[#12151c] p-1.5 rounded-full border border-cyan-400 shadow-lg">
+              <Smartphone className="w-5 h-5 text-cyan-300" />
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-bold font-display tracking-wide text-white mb-2">
+            ROTATE TO LANDSCAPE
+          </h2>
+          <p className="text-gray-300 text-sm leading-relaxed mb-6 px-2">
+            Hold your phone horizontally with two hands like a real supercar steering wheel for ultra-low latency gyro control.
+          </p>
+
+          {/* Primary Action: Lock Fullscreen Landscape */}
+          <button
+            onClick={requestFullscreenLandscape}
+            className="w-full py-4 px-6 bg-gradient-to-r from-cyan-500 via-sky-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold font-display text-base tracking-wider uppercase rounded-2xl shadow-xl shadow-cyan-500/30 transition-all transform active:scale-95 flex items-center justify-center space-x-2 border border-cyan-300/40"
+          >
+            <Maximize className="w-5 h-5" />
+            <span>ENTER LANDSCAPE COCKPIT</span>
+          </button>
+
+          {/* Secondary Action: Force Landscape Mode (useful if Auto-Rotate is locked in phone settings) */}
+          <button
+            onClick={() => {
+              triggerHaptic(25);
+              setForceLandscapeView(true);
+            }}
+            className="w-full mt-3 py-3 px-4 bg-white/10 hover:bg-white/15 active:bg-cyan-500/30 rounded-xl text-xs font-bold uppercase tracking-wider text-cyan-300 border border-white/10 transition-all"
+          >
+            FORCE HORIZONTAL VIEW (IF AUTO-ROTATE LOCKED)
+          </button>
+        </div>
+
+        {/* Footer Alternative */}
+        <div className="pt-2 border-t border-white/10">
+          <button
+            onClick={() => {
+              triggerHaptic(20);
+              setPreferPortraitMode(true);
+            }}
+            className="text-xs text-gray-400 hover:text-white underline underline-offset-4 tracking-wider"
+          >
+            Or tap here to drive in Portrait Wheel mode
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. PORTRAIT MODE CONTROLLER (If user explicitly prefers portrait)
+  if (!isLandscape && !forceLandscapeView && preferPortraitMode) {
     return (
       <div className="fixed inset-0 bg-[#08090C] flex flex-col justify-between p-3 select-none overflow-hidden text-white font-racing">
         {/* Top Header Bar */}
         <div className="flex items-center justify-between glass-panel px-3 py-2 rounded-xl border border-white/10">
           <div className="flex items-center space-x-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+              }`}
+            />
             <span className="text-xs uppercase tracking-wider text-gray-300 font-bold">
               {isConnected ? `${ping}ms P2P` : 'CONNECTING...'}
             </span>
-            <button
-              onClick={() => {
-                const code = prompt('Enter Desktop Room Code:', currentRoomId);
-                if (code && code.trim().length >= 4) {
-                  setCurrentRoomId(code.trim().toUpperCase());
-                }
-              }}
-              className="text-[10px] text-cyan-300 font-mono bg-white/10 active:bg-cyan-500/30 px-2 py-0.5 rounded border border-white/10"
-            >
-              {currentRoomId}
-            </button>
           </div>
 
           <div className="flex items-center space-x-1.5">
@@ -435,12 +555,14 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
             </button>
 
             <button
-              onClick={requestLandscape}
+              onClick={() => {
+                setPreferPortraitMode(false);
+                setForceLandscapeView(true);
+              }}
               className="flex items-center space-x-1 px-2.5 py-1 bg-cyan-500/20 active:bg-cyan-500/40 border border-cyan-500/40 rounded-lg text-[11px] font-bold text-cyan-300 uppercase tracking-wider"
-              title="Switch to Horizontal Fullscreen"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Rotate</span>
+              <span>Landscape</span>
             </button>
           </div>
         </div>
@@ -450,7 +572,8 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           <div>
             <div className="text-[10px] text-gray-400 uppercase font-mono">Speed</div>
             <div className="text-2xl font-display font-black text-cyan-300">
-              {hostTelemetry.speedKmh} <span className="text-xs font-normal text-gray-400">KM/H</span>
+              {hostTelemetry.speedKmh}{' '}
+              <span className="text-xs font-normal text-gray-400">KM/H</span>
             </div>
           </div>
           <div className="w-[1px] h-8 bg-white/10" />
@@ -469,7 +592,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           </div>
         </div>
 
-        {/* Steering Wheel Area (Center) */}
+        {/* Steering Wheel Area */}
         <div className="flex-1 flex flex-col items-center justify-center my-1 relative">
           <PhysicalWheel
             angleDegrees={angleDegrees}
@@ -481,7 +604,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
             isHonking={isHonking}
           />
 
-          {/* Quick Actions (Camera, Reset, Nitro) */}
+          {/* Quick Actions */}
           <div className="w-full flex items-center justify-center space-x-2 mt-3 px-2">
             <button
               onClick={() => sendOneShotAction('cameraSwitch')}
@@ -490,10 +613,17 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
               CAMERA
             </button>
             <button
-              onTouchStart={() => { setNitro(true); triggerHaptic(60); }}
-              onTouchEnd={() => setNitro(false)}
-              onMouseDown={() => setNitro(true)}
-              onMouseUp={() => setNitro(false)}
+              onTouchStart={() => {
+                setNitro(true);
+                inputRef.current.nitro = true;
+                dispatchImmediateInput({ nitro: true });
+                triggerHaptic(60);
+              }}
+              onTouchEnd={() => {
+                setNitro(false);
+                inputRef.current.nitro = false;
+                dispatchImmediateInput({ nitro: false });
+              }}
               className={`flex-1 max-w-[150px] py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all transform active:scale-95 border ${
                 nitro
                   ? 'bg-gradient-to-r from-purple-600 to-cyan-500 text-white shadow-xl shadow-purple-500/60 border-cyan-300'
@@ -512,17 +642,17 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           </div>
         </div>
 
-        {/* Bottom Pedals (Brake, Handbrake, Gas) */}
+        {/* Bottom Pedals */}
         <div className="flex items-center justify-between space-x-2 my-1 px-1">
           {/* Left: Brake Pedal */}
           <div
             ref={brakeContainerRef}
-            onTouchStart={(e) => { handleBrakeTouch(e); triggerHaptic(20); }}
+            onTouchStart={(e) => {
+              handleBrakeTouch(e);
+              triggerHaptic(20);
+            }}
             onTouchMove={handleBrakeTouch}
-            onTouchEnd={() => setBrake(0)}
-            onMouseDown={(e) => { handleBrakeTouch(e); }}
-            onMouseMove={(e) => e.buttons === 1 && handleBrakeTouch(e)}
-            onMouseUp={() => setBrake(0)}
+            onTouchEnd={handleBrakeEnd}
             className="flex-1 h-32 glass-panel rounded-2xl relative overflow-hidden flex flex-col justify-end p-1 border border-rose-500/40 cursor-pointer shadow-lg shadow-rose-950/40"
           >
             <div
@@ -541,10 +671,17 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
           {/* Center: Handbrake Button */}
           <button
-            onTouchStart={() => { setHandbrake(true); triggerHaptic(45); }}
-            onTouchEnd={() => setHandbrake(false)}
-            onMouseDown={() => setHandbrake(true)}
-            onMouseUp={() => setHandbrake(false)}
+            onTouchStart={() => {
+              setHandbrake(true);
+              inputRef.current.handbrake = true;
+              dispatchImmediateInput({ handbrake: true });
+              triggerHaptic(45);
+            }}
+            onTouchEnd={() => {
+              setHandbrake(false);
+              inputRef.current.handbrake = false;
+              dispatchImmediateInput({ handbrake: false });
+            }}
             className={`w-20 h-32 rounded-2xl font-display font-bold text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center ${
               handbrake
                 ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/50 border-rose-300'
@@ -552,18 +689,22 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
             }`}
           >
             <span className="text-[10px] text-gray-400">DRIFT</span>
-            <span className="font-black text-sm">HAND<br/>BRAKE</span>
+            <span className="font-black text-sm">
+              HAND
+              <br />
+              BRAKE
+            </span>
           </button>
 
-          {/* Right: Gas / Accel Pedal */}
+          {/* Right: Gas Pedal */}
           <div
             ref={throttleContainerRef}
-            onTouchStart={(e) => { handleThrottleTouch(e); triggerHaptic(20); }}
+            onTouchStart={(e) => {
+              handleThrottleTouch(e);
+              triggerHaptic(20);
+            }}
             onTouchMove={handleThrottleTouch}
-            onTouchEnd={() => setThrottle(0)}
-            onMouseDown={(e) => { handleThrottleTouch(e); }}
-            onMouseMove={(e) => e.buttons === 1 && handleThrottleTouch(e)}
-            onMouseUp={() => setThrottle(0)}
+            onTouchEnd={handleThrottleEnd}
             className="flex-1 h-32 glass-panel rounded-2xl relative overflow-hidden flex flex-col justify-end p-1 border border-cyan-500/40 cursor-pointer shadow-lg shadow-cyan-950/40"
           >
             <div
@@ -581,71 +722,97 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           </div>
         </div>
 
-        {/* Footer Guidance */}
+        {/* Footer */}
         <div className="flex items-center justify-between text-[10px] text-gray-400 px-2 py-0.5 font-mono">
           <span>PORTRAIT WHEEL</span>
-          <span>TIP: ROTATE PHONE FOR 2-HAND COCKPIT</span>
+          <span>ROTATE PHONE FOR HORIZONTAL COCKPIT</span>
         </div>
       </div>
     );
   }
 
+  // 3. FLAGSHIP FULL-SCREEN LANDSCAPE COCKPIT
+  // Applied natively or via CSS 90-degree transform if user has Auto-Rotate locked
+  const containerStyle: React.CSSProperties = forceLandscapeView
+    ? {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vh',
+        height: '100vw',
+        transform: 'rotate(90deg) translateY(-100%)',
+        transformOrigin: 'top left',
+        overflow: 'hidden'
+      }
+    : {};
+
   return (
-    <div className="fixed inset-0 bg-[#08090C] flex flex-col justify-between p-3 select-none overflow-hidden text-white font-racing">
+    <div
+      style={containerStyle}
+      className="fixed inset-0 bg-[#08090C] flex flex-col justify-between p-3 select-none overflow-hidden text-white font-racing"
+    >
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between glass-panel px-4 py-2 rounded-xl border border-white/10">
+      <div className="flex items-center justify-between glass-panel px-4 py-2 rounded-xl border border-white/10 z-20">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+              }`}
+            />
             <span className="text-xs uppercase tracking-wider text-gray-300 font-bold">
               {isConnected ? `${ping}ms P2P` : 'CONNECTING...'}
             </span>
           </div>
-          <button
-            onClick={() => {
-              const code = prompt('Enter Desktop Room Code:', currentRoomId);
-              if (code && code.trim().length >= 4) {
-                setCurrentRoomId(code.trim().toUpperCase());
-              }
-            }}
-            className="text-[11px] text-cyan-300 font-mono bg-white/10 active:bg-cyan-500/30 px-2 py-0.5 rounded border border-white/10 hover:border-cyan-400"
-          >
+          <span className="text-[11px] text-cyan-300 font-mono bg-white/10 px-2 py-0.5 rounded border border-white/10">
             ROOM: {currentRoomId}
-          </button>
+          </span>
         </div>
 
         <div className="flex items-center space-x-2">
           <button
             onClick={recalibrate}
             className="flex items-center space-x-1 px-3 py-1 bg-white/10 active:bg-cyan-500/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+            title="Recalibrate Neutral Wheel Position"
           >
             <Compass className="w-3.5 h-3.5 text-cyan-400" />
             <span>Center</span>
           </button>
 
+          {forceLandscapeView && (
+            <button
+              onClick={() => setForceLandscapeView(false)}
+              className="px-2.5 py-1 bg-white/10 active:bg-white/20 rounded-lg text-xs text-gray-300 uppercase tracking-wider"
+              title="Return to auto-rotation"
+            >
+              Reset Rot
+            </button>
+          )}
+
           <button
             onClick={toggleFullscreen}
             className="p-1.5 bg-white/10 active:bg-white/20 rounded-lg"
+            title="Toggle Fullscreen"
           >
             <Maximize className="w-4 h-4 text-gray-300" />
           </button>
         </div>
       </div>
 
-      {/* Main Cockpit Area */}
-      <div className="flex-1 flex items-center justify-between my-2 relative px-2">
-        {/* Left Hand: Brake Slider + Handbrake */}
+      {/* Main Cockpit Area (Horizontal Two-Hand Layout) */}
+      <div className="flex-1 flex items-center justify-between my-2 relative px-2 z-10">
+        {/* Left Hand: Progressive Brake Slider + Handbrake Button */}
         <div className="flex flex-col items-center justify-between h-full w-28 py-1">
           {/* Brake Slider */}
           <div
             ref={brakeContainerRef}
-            onTouchStart={(e) => { handleBrakeTouch(e); triggerHaptic(20); }}
+            onTouchStart={(e) => {
+              handleBrakeTouch(e);
+              triggerHaptic(20);
+            }}
             onTouchMove={handleBrakeTouch}
-            onTouchEnd={() => setBrake(0)}
-            onMouseDown={(e) => { handleBrakeTouch(e); }}
-            onMouseMove={(e) => e.buttons === 1 && handleBrakeTouch(e)}
-            onMouseUp={() => setBrake(0)}
-            className="w-20 h-40 glass-panel rounded-2xl relative overflow-hidden flex flex-col justify-end p-1 border border-rose-500/40 cursor-pointer shadow-lg shadow-rose-950/40"
+            onTouchEnd={handleBrakeEnd}
+            className="w-24 h-44 glass-panel rounded-2xl relative overflow-hidden flex flex-col justify-end p-1 border border-rose-500/40 cursor-pointer shadow-lg shadow-rose-950/40"
           >
             <div
               className="w-full bg-gradient-to-t from-rose-600 to-rose-400 rounded-xl transition-all duration-75"
@@ -663,11 +830,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
           {/* Handbrake Button */}
           <button
-            onTouchStart={() => { setHandbrake(true); triggerHaptic(45); }}
-            onTouchEnd={() => setHandbrake(false)}
-            onMouseDown={() => setHandbrake(true)}
-            onMouseUp={() => setHandbrake(false)}
-            className={`w-24 py-3 rounded-xl font-display font-bold text-xs uppercase tracking-wider transition-all transform active:scale-95 border ${
+            onTouchStart={() => {
+              setHandbrake(true);
+              inputRef.current.handbrake = true;
+              dispatchImmediateInput({ handbrake: true });
+              triggerHaptic(45);
+            }}
+            onTouchEnd={() => {
+              setHandbrake(false);
+              inputRef.current.handbrake = false;
+              dispatchImmediateInput({ handbrake: false });
+            }}
+            className={`w-24 py-3.5 mt-2 rounded-xl font-display font-bold text-xs uppercase tracking-wider transition-all transform active:scale-95 border ${
               handbrake
                 ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/50 border-rose-300'
                 : 'bg-white/10 text-gray-300 border-white/10'
@@ -677,14 +851,14 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           </button>
         </div>
 
-        {/* Center: Physical Steering Wheel & Cockpit Telemetry */}
+        {/* Center: Physical GT3 Rotating Steering Wheel & Telemetry */}
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <PhysicalWheel
             angleDegrees={angleDegrees}
             speedKmh={hostTelemetry.speedKmh}
             gear={hostTelemetry.gear}
             rpm={hostTelemetry.rpm}
-            size={215}
+            size={230}
             onHonk={triggerHorn}
             isHonking={isHonking}
           />
@@ -693,31 +867,33 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
           <div className="flex items-center space-x-3 mt-2">
             <button
               onClick={() => sendOneShotAction('cameraSwitch')}
-              className="px-3 py-1 bg-white/10 active:bg-white/20 rounded-lg text-xs font-bold text-gray-300 uppercase tracking-wider"
+              className="px-3.5 py-1.5 bg-white/10 active:bg-white/20 rounded-lg text-xs font-bold text-gray-300 uppercase tracking-wider border border-white/10 flex items-center space-x-1"
             >
-              CAMERA (C)
+              <Camera className="w-3.5 h-3.5" />
+              <span>CAM (C)</span>
             </button>
             <button
               onClick={() => sendOneShotAction('reset')}
-              className="px-3 py-1 bg-white/10 active:bg-rose-500/30 rounded-lg text-xs font-bold text-rose-300 uppercase tracking-wider"
+              className="px-3.5 py-1.5 bg-white/10 active:bg-rose-500/30 rounded-lg text-xs font-bold text-rose-300 uppercase tracking-wider border border-white/10 flex items-center space-x-1"
             >
-              RESET (R)
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>RESET (R)</span>
             </button>
           </div>
         </div>
 
-        {/* Right Hand: Throttle Slider + Nitro Burst */}
+        {/* Right Hand: Progressive Gas Slider + Nitro Boost Button */}
         <div className="flex flex-col items-center justify-between h-full w-28 py-1">
           {/* Gas Slider */}
           <div
             ref={throttleContainerRef}
-            onTouchStart={(e) => { handleThrottleTouch(e); triggerHaptic(20); }}
+            onTouchStart={(e) => {
+              handleThrottleTouch(e);
+              triggerHaptic(20);
+            }}
             onTouchMove={handleThrottleTouch}
-            onTouchEnd={() => setThrottle(0)}
-            onMouseDown={(e) => { handleThrottleTouch(e); }}
-            onMouseMove={(e) => e.buttons === 1 && handleThrottleTouch(e)}
-            onMouseUp={() => setThrottle(0)}
-            className="w-20 h-40 glass-panel rounded-2xl relative overflow-hidden flex flex-col justify-end p-1 border border-cyan-500/40 cursor-pointer shadow-lg shadow-cyan-950/40"
+            onTouchEnd={handleThrottleEnd}
+            className="w-24 h-44 glass-panel rounded-2xl relative overflow-hidden flex flex-col justify-end p-1 border border-cyan-500/40 cursor-pointer shadow-lg shadow-cyan-950/40"
           >
             <div
               className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-xl transition-all duration-75"
@@ -735,11 +911,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
           {/* Nitro Button */}
           <button
-            onTouchStart={() => { setNitro(true); triggerHaptic(60); }}
-            onTouchEnd={() => setNitro(false)}
-            onMouseDown={() => setNitro(true)}
-            onMouseUp={() => setNitro(false)}
-            className={`w-24 py-3 rounded-xl font-display font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-1 transition-all transform active:scale-95 border ${
+            onTouchStart={() => {
+              setNitro(true);
+              inputRef.current.nitro = true;
+              dispatchImmediateInput({ nitro: true });
+              triggerHaptic(60);
+            }}
+            onTouchEnd={() => {
+              setNitro(false);
+              inputRef.current.nitro = false;
+              dispatchImmediateInput({ nitro: false });
+            }}
+            className={`w-24 py-3.5 mt-2 rounded-xl font-display font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-1 transition-all transform active:scale-95 border ${
               nitro
                 ? 'bg-gradient-to-r from-purple-600 to-cyan-500 text-white shadow-xl shadow-purple-500/60 border-cyan-300'
                 : 'bg-gradient-to-r from-purple-900/60 to-cyan-900/60 text-cyan-300 border-purple-500/40'
@@ -752,8 +935,8 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
       </div>
 
       {/* Footer Status */}
-      <div className="flex items-center justify-between text-[10px] text-gray-500 px-2 font-mono">
-        <span>GYRO: {wakeLockActive ? 'WAKELOCK ON' : 'READY'}</span>
+      <div className="flex items-center justify-between text-[10px] text-gray-500 px-2 font-mono z-10">
+        <span>GYRO: {wakeLockActive ? 'WAKELOCK ACTIVE' : 'ACTIVE'}</span>
         <span>STEER NORM: {steerNormalized.toFixed(2)}</span>
       </div>
     </div>

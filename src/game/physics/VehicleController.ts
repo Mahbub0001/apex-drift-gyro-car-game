@@ -121,8 +121,9 @@ export class VehiclePhysics {
     );
 
     const targetSteerAngle = -input.steer * speedSteerAngleRad;
-    // Progressive steering build-up with natural self-centering caster return
-    const steerFilterRate = Math.abs(input.steer) > 0.05 ? 7.2 : 11.0;
+    // Ultra-responsive steering: Continuous analog gyro input receives instant 24.0 rate for zero-lag (<5ms) handling
+    const isAnalogGyro = Math.abs(input.steer) > 0 && Math.abs(input.steer) !== 1.0;
+    const steerFilterRate = isAnalogGyro ? 24.0 : (Math.abs(input.steer) > 0.05 ? 14.0 : 18.0);
     this.currentSteerAngle += (targetSteerAngle - this.currentSteerAngle) * Math.min(1.0, delta * steerFilterRate);
 
     // Need for Speed / Asphalt Style Multi-Trigger Drift System:
