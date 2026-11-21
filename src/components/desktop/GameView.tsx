@@ -8,6 +8,10 @@ import { MultiplayerRoomManager } from '../../services/multiplayer';
 import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState, SuperCarConfig, SUPER_CARS } from '../../types';
 import QRCode from 'qrcode';
 import { QrCode, X, Users, Globe, Volume2, VolumeX, Warehouse, Copy, Check, ExternalLink, Wifi } from 'lucide-react';
+import { MobileTouchControls } from '../mobile/MobileTouchControls';
+import { MobileOrientationGuard } from '../mobile/MobileOrientationGuard';
+import { useDeviceOrientation } from '../../hooks/useDeviceOrientation';
+import { isMobileDevice } from '../../utils/device';
 
 interface GameViewProps {
   roomId: string;
@@ -17,6 +21,8 @@ interface GameViewProps {
   sharedHost?: WebRTCHost | null;
   isInitialPhoneConnected?: boolean;
   initialOpenMultiplayer?: boolean;
+  isMobileMode?: boolean;
+  onSwitchToController?: () => void;
 }
 
 export const GameView: React.FC<GameViewProps> = ({
@@ -26,8 +32,17 @@ export const GameView: React.FC<GameViewProps> = ({
   onOpenGarage,
   sharedHost,
   isInitialPhoneConnected = false,
-  initialOpenMultiplayer = false
+  initialOpenMultiplayer = false,
+  isMobileMode,
+  onSwitchToController
 }) => {
+  const isMobile = isMobileMode ?? isMobileDevice();
+
+  const {
+    steerNormalized: mobileSteer,
+    angleDegrees: mobileAngle,
+    recalibrate: recalibrateMobileGyro
+  } = useDeviceOrientation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const hostRef = useRef<WebRTCHost | null>(null);
@@ -93,6 +108,15 @@ export const GameView: React.FC<GameViewProps> = ({
       sound.dispose();
     };
   }, []);
+
+  // Realtime Mobile Gyro Tilt Steering (when game runs directly on phone)
+  useEffect(() => {
+    if (isMobile) {
+      inputRef.current.steer = mobileSteer;
+      inputRef.current.angleDegrees = mobileAngle;
+      setActiveInputSource('gyro');
+    }
+  }, [isMobile, mobileSteer, mobileAngle]);
 
   // F1 Starting Grid Countdown Timer
   useEffect(() => {
@@ -435,8 +459,8 @@ export const GameView: React.FC<GameViewProps> = ({
     };
   }, []); // Run ONCE on mount! NEVER re-runs on input!
 
-  return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0a0c12]">
+  const content = (
+    <div className="relative w-full h-full overflow-hidden bg-[#0a0c12]">
       {/* 3D WebGL Canvas */}
       <canvas ref={canvasRef} className="w-full h-full block" />
 
@@ -520,11 +544,44 @@ export const GameView: React.FC<GameViewProps> = ({
           traffic={trafficStates}
           opponents={opponents}
           nearMissActive={nearMissActive}
+          isMobile={isMobile}
         />
       )}
 
-      {/* Floating Header Actions (Top Left) */}
-      <div className="absolute top-4 left-4 z-40 flex items-center space-x-2">
+      {/* On-Screen Mobile Transparent Controls Overlay (Asphalt / Real Racing 3 Style) */}
+      {isMobile && (
+        <MobileTouchControls
+          onInputChange={(partialInput) => {
+            soundRef.current?.init();
+            if (partialInput.throttle !== undefined) inputRef.current.throttle = partialInput.throttle;
+            if (partialInput.brake !== undefined) inputRef.current.brake = partialInput.brake;
+            if (partialInput.handbrake !== undefined) inputRef.current.handbrake = partialInput.handbrake;
+            if (partialInput.nitro !== undefined) inputRef.current.nitro = partialInput.nitro;
+          }}
+          onCameraSwitch={() => {
+            inputRef.current.cameraSwitch = true;
+            setTimeout(() => {
+              inputRef.current.cameraSwitch = false;
+            }, 100);
+          }}
+          onResetCar={() => {
+            inputRef.current.reset = true;
+            setTimeout(() => {
+              inputRef.current.reset = false;
+            }, 100);
+          }}
+          onRecalibrateGyro={recalibrateMobileGyro}
+          onOpenGarage={onOpenGarage}
+          onSwitchToControllerMode={onSwitchToController}
+          isMuted={isMuted}
+          onToggleMute={toggleSound}
+          currentAngleDegrees={mobileAngle}
+        />
+      )}
+
+      {/* Floating Header Actions (Top Left - Desktop Only) */}
+      {!isMobile && (
+        <div className="absolute top-4 left-4 z-40 flex items-center space-x-2">
         {onExit && (
           <button
             onClick={() => {
@@ -583,6 +640,7 @@ export const GameView: React.FC<GameViewProps> = ({
           {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
         </button>
       </div>
+      )}
 
       {/* Live Multiplayer Race Hub (Top Right) */}
       {isMpConnected && (
@@ -826,4 +884,14 @@ export const GameView: React.FC<GameViewProps> = ({
       )}
     </div>
   );
+
+  if (isMobile) {
+    return (
+      <MobileOrientationGuard onSwitchToController={onSwitchToController}>
+        {content}
+      </MobileOrientationGuard>
+    );
+  }
+
+  return content;
 };

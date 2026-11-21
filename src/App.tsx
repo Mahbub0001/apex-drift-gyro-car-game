@@ -5,19 +5,44 @@ import { GameView } from './components/desktop/GameView';
 import { GarageView } from './components/desktop/GarageView';
 import { WebRTCHost } from './services/webrtc';
 import { SUPER_CARS, SuperCarConfig } from './types';
+import { isMobileDevice } from './utils/device';
 
 export const App: React.FC = () => {
-  const [mode, setMode] = useState<'desktop' | 'controller'>(() => {
+  const isMobile = isMobileDevice();
+
+  const [mode, setMode] = useState<'desktop' | 'controller' | 'mobile_game'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('mode') === 'controller' || window.location.pathname.includes('/controller')
-        ? 'controller'
-        : 'desktop';
+      if (
+        urlParams.get('mode') === 'controller' ||
+        window.location.pathname.includes('/controller')
+      ) {
+        return 'controller';
+      }
+      if (urlParams.get('mode') === 'desktop') {
+        return 'desktop';
+      }
+      if (urlParams.get('mode') === 'game') {
+        return 'mobile_game';
+      }
+      // When opened on smartphone: directly start mobile game landscape experience!
+      if (isMobileDevice()) {
+        return 'mobile_game';
+      }
     }
     return 'desktop';
   });
 
-  const [gameState, setGameState] = useState<'home' | 'garage' | 'racing'>('home');
+  const [gameState, setGameState] = useState<'home' | 'garage' | 'racing'>(() => {
+    if (typeof window !== 'undefined' && isMobileDevice()) {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('mode') !== 'desktop') {
+        return 'racing';
+      }
+    }
+    return 'home';
+  });
+
   const [selectedCar, setSelectedCar] = useState<SuperCarConfig>(SUPER_CARS[0]); // Default to RAPTOR
 
   const [roomId, setRoomId] = useState<string>(() => {
@@ -42,7 +67,7 @@ export const App: React.FC = () => {
     }
   }, [roomId]);
 
-  // Persistent WebRTC Host: Starts listening on App load so phone pairing works on Home, Garage or Racing
+  // Persistent WebRTC Host (Only on desktop host or when needed)
   useEffect(() => {
     if (mode === 'controller') return;
 
@@ -64,10 +89,44 @@ export const App: React.FC = () => {
     };
   }, [mode, roomId]);
 
+  // 1. Phone Controller Gamepad Mode (e.g. when pairing with PC)
   if (mode === 'controller') {
     return <MobileController roomId={roomId} />;
   }
 
+  // 2. Direct Mobile Game Mode (Full landscape 3D game with transparent touch controls)
+  if (mode === 'mobile_game') {
+    if (gameState === 'garage') {
+      return (
+        <GarageView
+          selectedCar={selectedCar}
+          onSelectCar={(car) => {
+            setSelectedCar(car);
+            setGameState('racing');
+          }}
+          onOpenGyroModal={() => setGameState('racing')}
+          isPhoneConnected={false}
+          onBackToHome={() => setGameState('racing')}
+        />
+      );
+    }
+
+    return (
+      <GameView
+        roomId={roomId}
+        selectedCar={selectedCar}
+        onOpenGarage={() => setGameState('garage')}
+        onExit={() => setGameState('racing')}
+        sharedHost={null}
+        isInitialPhoneConnected={false}
+        initialOpenMultiplayer={false}
+        isMobileMode={true}
+        onSwitchToController={() => setMode('controller')}
+      />
+    );
+  }
+
+  // 3. Desktop Mode (Default on PC & Laptop computers)
   if (gameState === 'home') {
     return (
       <HomeView
@@ -115,6 +174,7 @@ export const App: React.FC = () => {
       sharedHost={hostRef.current}
       isInitialPhoneConnected={isPhoneConnected}
       initialOpenMultiplayer={openMpOnStart}
+      isMobileMode={false}
     />
   );
 };

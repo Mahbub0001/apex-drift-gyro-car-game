@@ -16,6 +16,7 @@ interface HUDOverlayProps {
   traffic: TrafficCarState[];
   opponents?: RemotePlayerState[];
   nearMissActive?: boolean;
+  isMobile?: boolean;
 }
 
 export const HUDOverlay: React.FC<HUDOverlayProps> = ({
@@ -29,7 +30,8 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   splineCurve,
   traffic,
   opponents = [],
-  nearMissActive = false
+  nearMissActive = false,
+  isMobile = false
 }) => {
   const rpmPercent = Math.min(100, Math.max(0, ((telemetry.rpm - 800) / 7700) * 100));
   const isRedline = telemetry.rpm > 7200;
@@ -48,66 +50,74 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
         }`}
       />
 
-      {/* 2. Top Bar */}
-      <div className="absolute top-4 left-6 right-6 flex items-center justify-between">
-        <div className="flex items-center space-x-3 glass-panel px-4 py-2 rounded-xl border border-white/10">
-          <div className="flex items-center space-x-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${activeInputSource === 'gyro' ? 'bg-purple-400 animate-pulse' : 'bg-cyan-400'}`} />
-            <span className="text-xs uppercase font-bold text-gray-300">
-              {activeInputSource === 'gyro' ? `PHONE GYRO (${ping}ms)` : 'KEYBOARD (WASD)'}
+      {/* 2. Top Bar (Desktop Only) */}
+      {!isMobile && (
+        <div className="absolute top-4 left-6 right-6 flex items-center justify-between">
+          <div className="flex items-center space-x-3 glass-panel px-4 py-2 rounded-xl border border-white/10">
+            <div className="flex items-center space-x-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${activeInputSource === 'gyro' ? 'bg-purple-400 animate-pulse' : 'bg-cyan-400'}`} />
+              <span className="text-xs uppercase font-bold text-gray-300">
+                {activeInputSource === 'gyro' ? `PHONE GYRO (${ping}ms)` : 'KEYBOARD (WASD)'}
+              </span>
+            </div>
+            <span className="text-gray-600">|</span>
+            <span className="text-xs text-gray-400 font-mono">
+              STEER: {input.angleDegrees}°
             </span>
           </div>
-          <span className="text-gray-600">|</span>
-          <span className="text-xs text-gray-400 font-mono">
-            STEER: {input.angleDegrees}°
-          </span>
-        </div>
 
-        {/* Center Events Overlay */}
-        <div className="flex flex-col items-center">
-          {nearMissActive && (
-            <div className="flex items-center space-x-1.5 px-3 py-1 bg-amber-500/20 border border-amber-400/50 rounded-xl animate-bounce mb-1">
-              <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
-              <span className="text-sm font-display font-bold text-amber-300 uppercase tracking-wider">
-                NEAR MISS! +150 NITRO
+          <div className="glass-panel px-4 py-2 rounded-xl border border-white/10 flex items-center space-x-2 text-xs font-bold text-gray-400">
+            <Camera className="w-3.5 h-3.5 text-cyan-400" />
+            <span>VIEW [C]</span>
+          </div>
+        </div>
+      )}
+
+      {/* Center Events Overlay (Drift, Near Miss, Jump) */}
+      <div className={`absolute left-0 right-0 flex flex-col items-center pointer-events-none z-20 ${isMobile ? 'top-12' : 'top-5'}`}>
+        {nearMissActive && (
+          <div className="flex items-center space-x-1.5 px-3 py-1 bg-amber-500/20 border border-amber-400/50 rounded-xl animate-bounce mb-1">
+            <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span className="text-sm font-display font-bold text-amber-300 uppercase tracking-wider">
+              NEAR MISS! +150 NITRO
+            </span>
+          </div>
+        )}
+
+        {telemetry.isDrifting && (
+          <div className="flex flex-col items-center animate-bounce">
+            <div className="flex items-center space-x-1 px-3 py-0.5 rounded-full bg-purple-500/30 border border-purple-400/60 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+              <Flame className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
+              <span className="text-xs uppercase font-extrabold tracking-widest text-purple-200">
+                DRIFT COMBO {Math.min(4.0, 1.0 + (telemetry.driftScore / 3000) * 0.5).toFixed(1)}x
               </span>
             </div>
-          )}
+            <span className="text-3xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-400 drop-shadow-[0_2px_12px_rgba(168,85,247,0.8)] mt-0.5">
+              +{telemetry.driftScore} PTS
+            </span>
+          </div>
+        )}
 
-          {telemetry.isDrifting && (
-            <div className="flex flex-col items-center animate-bounce">
-              <div className="flex items-center space-x-1 px-3 py-0.5 rounded-full bg-purple-500/30 border border-purple-400/60 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
-                <Flame className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
-                <span className="text-xs uppercase font-extrabold tracking-widest text-purple-200">
-                  DRIFT COMBO {Math.min(4.0, 1.0 + (telemetry.driftScore / 3000) * 0.5).toFixed(1)}x
-                </span>
-              </div>
-              <span className="text-3xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-400 drop-shadow-[0_2px_12px_rgba(168,85,247,0.8)] mt-0.5">
-                +{telemetry.driftScore} PTS
-              </span>
-            </div>
-          )}
-
-          {telemetry.isJumping && (
-            <div className="flex flex-col items-center animate-pulse">
-              <span className="text-xs uppercase font-bold tracking-widest text-cyan-400 drop-shadow">
-                ASPHALT JUMP!
-              </span>
-              <span className="text-2xl font-display font-bold text-cyan-200">
-                AIR TIME
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="glass-panel px-4 py-2 rounded-xl border border-white/10 flex items-center space-x-2 text-xs font-bold text-gray-400">
-          <Camera className="w-3.5 h-3.5 text-cyan-400" />
-          <span>VIEW [C]</span>
-        </div>
+        {telemetry.isJumping && (
+          <div className="flex flex-col items-center animate-pulse">
+            <span className="text-xs uppercase font-bold tracking-widest text-cyan-400 drop-shadow">
+              ASPHALT JUMP!
+            </span>
+            <span className="text-2xl font-display font-bold text-cyan-200">
+              AIR TIME
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* 3. Bottom Left: Interactive Vector Radar Minimap & Dynamic G-Force Meter */}
-      <div className="absolute bottom-6 left-6 flex items-end space-x-3">
+      {/* 3. Radar Minimap & G-Force Meter */}
+      <div
+        className={`absolute flex items-end space-x-2.5 transition-all duration-200 ${
+          isMobile
+            ? 'top-14 left-4 scale-75 origin-top-left'
+            : 'bottom-6 left-6'
+        }`}
+      >
         <Minimap
           playerPos={playerPos}
           playerHeading={playerHeading}
@@ -116,32 +126,38 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
           opponents={opponents}
         />
 
-        {/* Circular Telemetry G-Force Meter */}
-        <div className="glass-panel p-2.5 rounded-2xl border border-cyan-500/30 flex flex-col items-center justify-center text-center shadow-xl shadow-black/60 pointer-events-auto h-28 w-24">
-          <span className="text-[9px] uppercase font-bold tracking-widest text-gray-400 mb-1">
-            G-FORCE
-          </span>
-          <div className="relative w-14 h-14 rounded-full border border-white/20 flex items-center justify-center bg-black/40">
-            {/* Axis crosshair */}
-            <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
-            <div className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
-            <div className="w-8 h-8 rounded-full border border-dashed border-white/10" />
-            {/* Dynamic G-Ball */}
-            <div
-              className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#00f2fe] transition-transform duration-75"
-              style={{
-                transform: `translate(${Math.max(-20, Math.min(20, -input.steer * (telemetry.speedKmh / 160) * 20))}px, ${Math.max(-20, Math.min(20, (input.brake - input.throttle) * 16))}px)`
-              }}
-            />
+        {/* Circular Telemetry G-Force Meter (Desktop Only or Scaled) */}
+        {!isMobile && (
+          <div className="glass-panel p-2.5 rounded-2xl border border-cyan-500/30 flex flex-col items-center justify-center text-center shadow-xl shadow-black/60 pointer-events-auto h-28 w-24">
+            <span className="text-[9px] uppercase font-bold tracking-widest text-gray-400 mb-1">
+              G-FORCE
+            </span>
+            <div className="relative w-14 h-14 rounded-full border border-white/20 flex items-center justify-center bg-black/40">
+              <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
+              <div className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
+              <div className="w-8 h-8 rounded-full border border-dashed border-white/10" />
+              <div
+                className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#00f2fe] transition-transform duration-75"
+                style={{
+                  transform: `translate(${Math.max(-20, Math.min(20, -input.steer * (telemetry.speedKmh / 160) * 20))}px, ${Math.max(-20, Math.min(20, (input.brake - input.throttle) * 16))}px)`
+                }}
+              />
+            </div>
+            <span className="text-[10px] font-mono font-bold text-cyan-300 mt-1">
+              {(Math.sqrt(Math.pow(input.steer * (telemetry.speedKmh / 160) * 1.25, 2) + Math.pow((input.throttle - input.brake) * 0.85, 2))).toFixed(2)} G
+            </span>
           </div>
-          <span className="text-[10px] font-mono font-bold text-cyan-300 mt-1">
-            {(Math.sqrt(Math.pow(input.steer * (telemetry.speedKmh / 160) * 1.25, 2) + Math.pow((input.throttle - input.brake) * 0.85, 2))).toFixed(2)} G
-          </span>
-        </div>
+        )}
       </div>
 
-      {/* 4. Bottom Right: Tachometer, Speedometer, Damage & Nitro */}
-      <div className="absolute bottom-6 right-6 flex flex-col items-end">
+      {/* 4. Speedometer, Tachometer, Damage & Nitro */}
+      <div
+        className={`absolute flex flex-col items-end transition-all duration-200 ${
+          isMobile
+            ? 'top-14 right-4 scale-75 origin-top-right'
+            : 'bottom-6 right-6'
+        }`}
+      >
         {/* Car Damage / Health Integrity Bar */}
         <div className="w-56 glass-panel p-2 rounded-xl border border-white/10 mb-2 flex items-center space-x-2">
           <ShieldAlert className={`w-3.5 h-3.5 ${telemetry.health < 40 ? 'text-rose-400 animate-pulse' : telemetry.health < 75 ? 'text-amber-400' : 'text-emerald-400'}`} />
