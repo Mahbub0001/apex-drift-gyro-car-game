@@ -151,7 +151,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </span>
             </div>
             <p className="text-[11px] font-mono text-gray-400 tracking-wider">
-              7.6 KM GRAND ALPINE CIRCUIT • 4-LANE HIGHWAY • WEBGL2 & GYRO
+              12.5 KM GRAND WORLD CIRCUIT • 4-LANE HIGHWAY • WEBGL2 & GYRO
             </p>
           </div>
         </div>
@@ -216,7 +216,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </span>
             </h2>
             <p className="text-xs text-gray-400 mt-2 font-mono leading-relaxed">
-              Drive authentic hypercars on an expansive 7.6 KM Alpine & coastal 4-lane highway with illuminated mountain tunnels, scenic bridges, and 60Hz zero-install phone steering!
+              Drive authentic hypercars on an expansive 12.5 KM Riviera ocean, alpine summit & neon canyon 4-lane circuit with illuminated mountain tunnels, viaduct bridges, and 60Hz zero-install phone steering!
             </p>
           </div>
 
@@ -231,7 +231,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           >
             <div>
               <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-100 font-bold block mb-0.5">
-                GRAND ALPINE CIRCUIT • 7.6 KM (4 LANES)
+                GRAND WORLD CIRCUIT • 12.5 KM (4 LANES)
               </span>
               <span className="text-2xl font-display font-black uppercase tracking-wider text-white flex items-center gap-2">
                 ENTER RACE TRACK <Play className="w-5 h-5 fill-white text-white group-hover:translate-x-1.5 transition-transform" />

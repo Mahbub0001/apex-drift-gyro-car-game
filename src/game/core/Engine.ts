@@ -362,6 +362,9 @@ export class GameEngine {
 
     // Dynamic directional light following player car for continuous shadow casting
     if (this.track && this.track.dirLight) {
+      if (typeof (this.track as any).update === 'function') {
+        this.track.update(delta);
+      }
       this.track.dirLight.position.set(
         this.vehiclePhysics.position.x + 80,
         this.vehiclePhysics.position.y + 120,
@@ -474,7 +477,7 @@ export class GameEngine {
 
     // 8. Curb Detection & Audio Feedback
     const closestTrackPt = this.track.getClosestSplinePoint(this.vehiclePhysics.position.x, this.vehiclePhysics.position.z);
-    telemetry.isOnCurb = closestTrackPt.dist >= 5.0 && closestTrackPt.dist <= 6.2 && telemetry.speedKmh > 20;
+    telemetry.isOnCurb = closestTrackPt.dist >= 8.0 && closestTrackPt.dist <= 9.6 && telemetry.speedKmh > 20;
 
     // 9. Interactive Braking Taillights
     const isBraking = input.brake > 0.05 || input.handbrake;
