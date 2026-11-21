@@ -118,7 +118,8 @@ export class GameEngine {
       powerPreference: 'high-performance'
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const isMobileScreen = typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) <= 768;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobileScreen ? 1.5 : 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15; // Crisp vibrant lighting
     this.renderer.shadowMap.enabled = true;

@@ -557,6 +557,13 @@ export const GameView: React.FC<GameViewProps> = ({
             if (partialInput.brake !== undefined) inputRef.current.brake = partialInput.brake;
             if (partialInput.handbrake !== undefined) inputRef.current.handbrake = partialInput.handbrake;
             if (partialInput.nitro !== undefined) inputRef.current.nitro = partialInput.nitro;
+            if (partialInput.steer !== undefined) {
+              inputRef.current.steer = partialInput.steer;
+              if (partialInput.angleDegrees !== undefined) {
+                inputRef.current.angleDegrees = partialInput.angleDegrees;
+              }
+              setActiveInputSource('gyro');
+            }
           }}
           onCameraSwitch={() => {
             inputRef.current.cameraSwitch = true;
