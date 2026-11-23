@@ -8,6 +8,9 @@ interface MinimapProps {
   splineCurve: THREE.CatmullRomCurve3;
   traffic: TrafficCarState[];
   opponents?: RemotePlayerState[];
+  isMobile?: boolean;
+  standalone?: boolean;
+  className?: string;
 }
 
 export const Minimap: React.FC<MinimapProps> = ({
@@ -15,7 +18,10 @@ export const Minimap: React.FC<MinimapProps> = ({
   playerHeading,
   splineCurve,
   traffic,
-  opponents = []
+  opponents = [],
+  isMobile = false,
+  standalone = true,
+  className = ''
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -153,18 +159,49 @@ export const Minimap: React.FC<MinimapProps> = ({
   }
   const progressPercent = Math.min(100, Math.max(0, Math.round(closestT * 100)));
 
-  return (
-    <div className="glass-panel p-3 rounded-2xl border border-cyan-500/30 flex flex-col items-center shadow-xl shadow-black/60 pointer-events-auto">
-      <div className="flex items-center justify-between w-full text-[10px] uppercase font-bold text-gray-400 mb-1 px-1">
-        <span>RADAR MAP</span>
-        <span className="text-cyan-400 font-mono">{progressPercent}%</span>
+  if (isMobile) {
+    return (
+      <div className={`hud-glass-capsule p-2 rounded-2xl border border-cyan-500/30 flex flex-col items-center pointer-events-auto shadow-lg ${className}`}>
+        <div className="flex items-center justify-between w-full text-[9px] uppercase font-bold text-gray-300 mb-1 px-0.5">
+          <span className="tracking-wider">RADAR</span>
+          <span className="text-cyan-400 font-mono font-black">{progressPercent}%</span>
+        </div>
+        <canvas
+          ref={canvasRef}
+          width={120}
+          height={120}
+          className="w-20 h-20 rounded-xl bg-black/40 border border-white/10"
+        />
+      </div>
+    );
+  }
+
+  const innerContent = (
+    <>
+      <div className="flex items-center justify-between w-full text-[10px] uppercase font-bold text-gray-400 mb-1.5 px-0.5">
+        <span className="tracking-wider">RADAR MAP</span>
+        <span className="text-cyan-400 font-mono font-bold">{progressPercent}%</span>
       </div>
       <canvas
         ref={canvasRef}
-        width={140}
-        height={220}
-        className="w-28 h-44 rounded-xl bg-black/40 border border-white/5"
+        width={130}
+        height={150}
+        className="w-28 h-32 rounded-xl bg-black/40 border border-white/10"
       />
+    </>
+  );
+
+  if (!standalone) {
+    return (
+      <div className={`flex flex-col items-center ${className}`}>
+        {innerContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`hud-glass-pod p-3 rounded-2xl border border-cyan-500/30 flex flex-col items-center shadow-2xl shadow-black/60 pointer-events-auto ${className}`}>
+      {innerContent}
     </div>
   );
 };

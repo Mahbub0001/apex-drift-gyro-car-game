@@ -405,8 +405,8 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
           </button>
         </div>
 
-        {/* Center Guidance Bar (Subtle) */}
-        <div className="pointer-events-none pb-2 text-center">
+        {/* Center Guidance Bar (Subtle, elevated above the bottom-center speedometer) */}
+        <div className="pointer-events-none mb-20 text-center">
           <span className="text-[10px] font-mono tracking-widest text-white/50 uppercase bg-black/40 px-3.5 py-1 rounded-full backdrop-blur-md border border-white/10 shadow">
             {steerMode === 'gyro' ? 'TILT PHONE TO STEER' : 'USE TOUCH ARROWS TO STEER'}
           </span>
