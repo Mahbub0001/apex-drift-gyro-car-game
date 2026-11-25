@@ -112,7 +112,12 @@ export const GameView: React.FC<GameViewProps> = ({
   });
 
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
-  const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(initialOpenMultiplayer);
+  const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mp')) {
+      return false; // Auto-join straight into the starting grid
+    }
+    return initialOpenMultiplayer;
+  });
   const [isPauseOpen, setIsPauseOpen] = useState<boolean>(false);
   const isPauseRef = useRef<boolean>(false);
   const [mpUsername, setMpUsername] = useState<string>(
@@ -152,6 +157,21 @@ export const GameView: React.FC<GameViewProps> = ({
   useEffect(() => {
     mpTargetLapsRef.current = mpTargetLaps;
   }, [mpTargetLaps]);
+
+  // Automatically connect invited players who arrive via ?mp=ROOMCODE
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mpParam = new URLSearchParams(window.location.search).get('mp');
+    if (mpParam) {
+      const code = mpParam.toUpperCase().trim().slice(0, 6);
+      setMpRoomCode(code);
+      setIsMpModalOpen(false);
+      const timer = window.setTimeout(() => {
+        startMultiplayer(false);
+      }, 120);
+      return () => window.clearTimeout(timer);
+    }
+  }, []);
 
   const [telemetry, setTelemetry] = useState<VehicleTelemetry>({
     speedKmh: 0,

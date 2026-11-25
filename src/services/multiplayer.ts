@@ -467,6 +467,18 @@ export class MultiplayerRoomManager {
           }
         } else {
           this.sendRelayHandshake(true);
+          if (this.isHost) {
+            const roster = Array.from(this.remotePlayers.values()).filter((pl) => pl.id !== p.id);
+            if (roster.length > 0) {
+              this.relay?.send({ type: 'ROSTER', payload: roster });
+            }
+            if (this.raceResults.length > 0) {
+              this.relay?.send({
+                type: 'RACE_RESULTS',
+                payload: { raceEpoch: this.raceEpoch, results: this.raceResults }
+              });
+            }
+          }
         }
       }
     } else if (data.type === 'ROSTER' && Array.isArray(data.payload)) {

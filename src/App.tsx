@@ -72,8 +72,8 @@ export const App: React.FC = () => {
   const [roomId, setRoomId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      const roomParam = urlParams.get('room');
-      if (roomParam) return roomParam.toUpperCase();
+      const roomParam = urlParams.get('room') || urlParams.get('mp');
+      if (roomParam) return roomParam.toUpperCase().slice(0, 6);
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       if (window.crypto?.getRandomValues) {
         const bytes = new Uint8Array(6);
@@ -97,15 +97,19 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const roomParam = urlParams.get('room');
-    if (roomParam && roomParam.toUpperCase() !== roomId) {
-      setRoomId(roomParam.toUpperCase());
+    const roomParam = urlParams.get('room') || urlParams.get('mp');
+    if (roomParam && roomParam.toUpperCase().slice(0, 6) !== roomId) {
+      setRoomId(roomParam.toUpperCase().slice(0, 6));
     }
   }, [roomId]);
 
   // Initialize Persistent WebRTC Host ONLY in Desktop Host mode (prevents PeerJS ID collisions!)
   useEffect(() => {
     if (mode !== 'desktop') return;
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mp')) {
+      // Arriving via multiplayer invite link: do not occupy apex-host to avoid controller peer conflict
+      return;
+    }
 
     const host = new WebRTCHost(roomId);
     hostRef.current = host;
