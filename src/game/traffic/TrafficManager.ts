@@ -9,7 +9,7 @@ interface TrafficEntity {
   t: number;             // Position along spline [0, 1]
   baseSpeed: number;     // Speed along spline
   speed: number;
-  laneOffset: number;    // Offset from center line (-2.8, +2.8)
+  laneOffset: number;    // Offset from center line (-5.6 to +5.6)
   color: number;
   width: number;
   length: number;
@@ -25,7 +25,6 @@ export class TrafficManager {
   public trafficList: TrafficEntity[] = [];
   public trafficStates: TrafficCarState[] = [];
 
-  // Authentic realistic automotive colors
   private trafficColors = [
     0x0a192f, // Midnight Metallic Navy
     0x800f2f, // Deep Wine / Cherry Red
@@ -37,12 +36,15 @@ export class TrafficManager {
 
   private templates: Map<string, THREE.Group> = new Map();
   private gltfLoader = new GLTFLoader();
+  private upVec = new THREE.Vector3(0, 1, 0);
+  private reusableBinormal = new THREE.Vector3();
+  private reusableWorldPos = new THREE.Vector3();
+  private reusableEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
   constructor(scene: THREE.Scene, splineCurve: THREE.CatmullRomCurve3) {
     this.scene = scene;
     this.splineCurve = splineCurve;
 
-    // Load authentic 3D civilian vehicle models
     this.preloadModels().then(() => {
       this.applyTemplatesToTraffic();
     });
@@ -50,7 +52,6 @@ export class TrafficManager {
     this.spawnInitialTraffic();
   }
 
-  // Preloads the 4 civilian glTF 2.0 models from public/models/
   private async preloadModels(): Promise<void> {
     const models: { type: string; url: string }[] = [
       { type: 'sedan', url: '/models/sedan.glb' },
@@ -72,8 +73,8 @@ export class TrafficManager {
                   child.receiveShadow = true;
                   const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
                   if (mat && mat.isMeshStandardMaterial) {
-                    mat.roughness = Math.min(mat.roughness, 0.4);
-                    mat.metalness = Math.max(mat.metalness, 0.3);
+                    mat.roughness = Math.min(mat.roughness, 0.42);
+                    mat.metalness = Math.max(mat.metalness, 0.25);
                   }
                 }
               });
@@ -92,13 +93,14 @@ export class TrafficManager {
     await Promise.all(promises);
   }
 
-  // Clones a loaded GLTF template and scales it to true life-size automotive proportions
-  private buildCarFromTemplate(type: string, color: number): { mesh: THREE.Group; width: number; length: number; height: number } {
+  private buildCarFromTemplate(
+    type: string,
+    color: number
+  ): { mesh: THREE.Group; width: number; length: number; height: number } {
     const group = new THREE.Group();
     let template = this.templates.get(type);
 
     if (!template) {
-      // Fallback mapping if a specific model isn't finished loading yet
       if (type === 'suv') template = this.templates.get('truck') || this.templates.get('sedan');
       else template = this.templates.get('sedan');
     }
@@ -123,10 +125,8 @@ export class TrafficManager {
 
     if (template) {
       const cloned = template.clone(true);
-      // Life-size scaling factor: 1.65 matches standard automotive track dimensions
       cloned.scale.set(1.65, 1.65, 1.65);
 
-      // Apply body paint tint to body mesh if applicable
       if (type !== 'taxi') {
         cloned.traverse((child) => {
           if ((child as THREE.Mesh).isMesh && child.name.toLowerCase().includes('body')) {
@@ -140,7 +140,6 @@ export class TrafficManager {
 
       group.add(cloned);
     } else {
-      // Sleek placeholder while glb is buffering (rarely needed)
       const placeholderGeo = new THREE.BoxGeometry(width, height * 0.6, length);
       const placeholderMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.7 });
       const box = new THREE.Mesh(placeholderGeo, placeholderMat);
@@ -148,37 +147,33 @@ export class TrafficManager {
       group.add(box);
     }
 
-    // Add glowing Xenon LED Headlights
-    const headMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const headGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    // Glowing Headlights & Taillights
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xfff8e7 });
+    const headGeo = new THREE.SphereGeometry(0.11, 8, 8);
     const headL = new THREE.Mesh(headGeo, headMat);
-    headL.position.set(-width * 0.38, height * 0.38, length * 0.48);
+    headL.position.set(-width * 0.36, height * 0.36, length * 0.46);
     const headR = headL.clone();
-    headR.position.x = width * 0.38;
+    headR.position.x = width * 0.36;
     group.add(headL, headR);
 
-    // Add bright red LED Taillights
     const tailMat = new THREE.MeshBasicMaterial({ color: 0xff002b });
-    const tailGeo = new THREE.BoxGeometry(0.35, 0.1, 0.05);
+    const tailGeo = new THREE.BoxGeometry(0.32, 0.1, 0.05);
     const tailL = new THREE.Mesh(tailGeo, tailMat);
-    tailL.position.set(-width * 0.38, height * 0.42, -length * 0.48);
+    tailL.position.set(-width * 0.36, height * 0.4, -length * 0.46);
     const tailR = tailL.clone();
-    tailR.position.x = width * 0.38;
+    tailR.position.x = width * 0.36;
     group.add(tailL, tailR);
 
     return { mesh: group, width, length, height };
   }
 
-  // Once GLTFs finish loading, swap into any existing spawned traffic
   private applyTemplatesToTraffic() {
     this.trafficList.forEach((car) => {
-      // Clear out the temporary placeholder meshes
       while (car.mesh.children.length > 0) {
         car.mesh.remove(car.mesh.children[0]);
       }
 
       const { mesh, width, length, height } = this.buildCarFromTemplate(car.type, car.color);
-      // Transfer children into car.mesh
       while (mesh.children.length > 0) {
         car.mesh.add(mesh.children[0]);
       }
@@ -188,12 +183,19 @@ export class TrafficManager {
     });
   }
 
-  // Spawns a sparse, realistic highway traffic fleet across the 4-lane grand highway
-  private spawnInitialTraffic() {
-    const lanes = [-5.6, -1.9, 1.9, 5.6]; // 4 Clean highway lanes across 18.5m road
-    const types: ('sedan' | 'taxi' | 'van' | 'truck')[] = ['sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi'];
+  private orientMeshAlongTangent(mesh: THREE.Group, tangent: THREE.Vector3) {
+    const yaw = Math.atan2(tangent.x, tangent.z);
+    const pitch = -Math.asin(THREE.MathUtils.clamp(tangent.y, -0.98, 0.98));
+    this.reusableEuler.set(pitch, yaw, 0, 'YXZ');
+    mesh.quaternion.setFromEuler(this.reusableEuler);
+  }
 
-    // 16 cars spread across the entire 12.5 KM highway circuit
+  private spawnInitialTraffic() {
+    const lanes = [-5.6, -1.9, 1.9, 5.6];
+    const types: ('sedan' | 'taxi' | 'van' | 'truck')[] = [
+      'sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi', 'van', 'truck', 'sedan', 'taxi'
+    ];
+
     const numTraffic = 16;
 
     for (let i = 0; i < numTraffic; i++) {
@@ -201,19 +203,18 @@ export class TrafficManager {
       const color = this.trafficColors[i % this.trafficColors.length];
       const { mesh, width, length, height } = this.buildCarFromTemplate(type, color);
 
-      // Evenly staggered along the circuit: first civilian car ahead at t = 0.03
       const t = 0.03 + (i / numTraffic) * 0.92;
       const lane = lanes[i % lanes.length];
-      const baseSpeed = 0.0012 + (i % 3) * 0.0004; // Scaled for 12.5 KM loop (~80-105 km/h)
+      const baseSpeed = 0.0012 + (i % 3) * 0.0004;
 
-      // Immediately set initial track position and tangent orientation
       const curvePoint = this.splineCurve.getPoint(t);
       const tangent = this.splineCurve.getTangent(t);
-      const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-      const worldPos = curvePoint.clone().add(binormal.multiplyScalar(lane));
+      this.reusableBinormal.crossVectors(tangent, this.upVec).normalize();
+
+      const worldPos = curvePoint.clone().addScaledVector(this.reusableBinormal, lane);
       worldPos.y = curvePoint.y + 0.22;
       mesh.position.copy(worldPos);
-      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
+      this.orientMeshAlongTangent(mesh, tangent);
 
       this.scene.add(mesh);
 
@@ -244,73 +245,98 @@ export class TrafficManager {
     onNearMiss: () => void
   ): TrafficCarState[] {
     const states: TrafficCarState[] = [];
+    const now = performance.now();
 
-    this.trafficList.forEach((car) => {
-      // Smooth return to base speed if bumped
-      car.speed = THREE.MathUtils.lerp(car.speed, car.baseSpeed, delta * 1.5);
-      car.lateralImpulse = THREE.MathUtils.lerp(car.lateralImpulse, 0, delta * 2.5);
+    for (let i = 0; i < this.trafficList.length; i++) {
+      const car = this.trafficList[i];
+      car.speed = THREE.MathUtils.lerp(car.speed, car.baseSpeed, Math.min(1, delta * 1.5));
+      car.lateralImpulse = THREE.MathUtils.lerp(car.lateralImpulse, 0, Math.min(1, delta * 2.5));
 
-      // Seamless closed circuit looping
       car.t = (car.t + car.speed * delta) % 1.0;
       if (car.t < 0) car.t += 1.0;
 
       const curvePoint = this.splineCurve.getPoint(car.t);
       const tangent = this.splineCurve.getTangent(car.t);
-      const binormal = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+      this.reusableBinormal.crossVectors(tangent, this.upVec).normalize();
 
-      // World position with lane offset + deflection
-      const effectiveLane = THREE.MathUtils.clamp(car.laneOffset + car.lateralImpulse, -5.0, 5.0);
-      const worldPos = curvePoint.clone().add(binormal.multiplyScalar(effectiveLane));
-      worldPos.y = curvePoint.y + 0.22;
-      car.mesh.position.copy(worldPos);
+      const effectiveLane = THREE.MathUtils.clamp(car.laneOffset + car.lateralImpulse, -6.4, 6.4);
+      this.reusableWorldPos.copy(curvePoint).addScaledVector(this.reusableBinormal, effectiveLane);
+      this.reusableWorldPos.y = curvePoint.y + 0.22;
+      car.mesh.position.copy(this.reusableWorldPos);
+      this.orientMeshAlongTangent(car.mesh, tangent);
 
-      // Align cleanly along track tangent direction (+Z forward)
-      car.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
+      // True Oriented Bounding Box (OBB) check in car's local (tangent, binormal) frame!
+      const dx = playerPos.x - this.reusableWorldPos.x;
+      const dy = Math.abs(playerPos.y - this.reusableWorldPos.y);
+      const dz = playerPos.z - this.reusableWorldPos.z;
 
-      // Oriented Hitbox Collision Check
-      const dist = worldPos.distanceTo(playerPos);
-      const halfW = (car.width + 1.85) / 2;
-      const halfL = (car.length + 4.3) / 2;
+      const distSq = dx * dx + dz * dz;
+      const halfW = (car.width + 1.8) * 0.5;
+      const halfL = (car.length + 4.1) * 0.5;
 
-      const deltaX = Math.abs(worldPos.x - playerPos.x);
-      const deltaZ = Math.abs(worldPos.z - playerPos.z);
+      // Project offset onto traffic car's local forward & side axes (flat XZ plane)
+      const tLen = Math.hypot(tangent.x, tangent.z) || 1;
+      const fwdX = tangent.x / tLen;
+      const fwdZ = tangent.z / tLen;
+      const sideX = this.reusableBinormal.x;
+      const sideZ = this.reusableBinormal.z;
 
-      if (deltaX < halfW && deltaZ < halfL && Math.abs(worldPos.y - playerPos.y) < 2.0) {
-        // SOLID IMPACT DETECTED!
-        const now = performance.now();
-        if (!car.lastCollisionTime || now - car.lastCollisionTime > 900) {
+      const localFwd = dx * fwdX + dz * fwdZ;
+      const localSide = dx * sideX + dz * sideZ;
+
+      if (Math.abs(localSide) < halfW && Math.abs(localFwd) < halfL && dy < 2.2) {
+        if (!car.lastCollisionTime || now - car.lastCollisionTime > 850) {
           car.lastCollisionTime = now;
-          const normalX = (playerPos.x - worldPos.x) / (halfW || 1);
-          const normalZ = (playerPos.z - worldPos.z) / (halfL || 1);
 
-          // Knock the civilian car forward and sideways smoothly
-          car.speed += 0.008;
-          car.lateralImpulse += normalX < 0 ? 1.6 : -1.6;
+          // Compute accurate push-out normal in world XZ
+          const len = Math.sqrt(distSq) || 1;
+          const normalX = dx / len;
+          const normalZ = dz / len;
 
-          onCollision(normalX, normalZ, playerSpeedKmh, worldPos);
+          car.speed += 0.007;
+          car.lateralImpulse += localSide >= 0 ? -1.8 : 1.8;
+
+          onCollision(normalX, normalZ, playerSpeedKmh, this.reusableWorldPos);
         }
-      } else if (dist < 4.2 && !car.hasTriggeredNearMiss && playerSpeedKmh > 75) {
-        // High-Speed Slipstream Near Miss Bonus!
+      } else if (distSq < 18.0 && !car.hasTriggeredNearMiss && playerSpeedKmh > 75 && dy < 2.5) {
         car.hasTriggeredNearMiss = true;
         onNearMiss();
       }
 
-      if (dist > 18) {
+      if (distSq > 324) {
         car.hasTriggeredNearMiss = false;
       }
 
       states.push({
         id: car.id,
         type: car.type,
-        position: [worldPos.x, worldPos.y, worldPos.z],
+        position: [this.reusableWorldPos.x, this.reusableWorldPos.y, this.reusableWorldPos.z],
         rotation: [car.mesh.rotation.x, car.mesh.rotation.y, car.mesh.rotation.z],
         speed: Math.round(car.speed * 2500 * 3.6),
         lane: car.laneOffset,
         color: `#${car.color.toString(16).padStart(6, '0')}`
       });
-    });
+    }
 
     this.trafficStates = states;
     return states;
+  }
+
+  public dispose() {
+    this.trafficList.forEach((car) => {
+      this.scene.remove(car.mesh);
+      car.mesh.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          mesh.geometry?.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((m) => m.dispose());
+          } else {
+            mesh.material?.dispose();
+          }
+        }
+      });
+    });
+    this.trafficList = [];
   }
 }

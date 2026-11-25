@@ -665,6 +665,51 @@ export class SoundEngine {
     } catch (_) {}
   }
 
+  // 16. Mechanical Sequential Dog-Box Gear Shift Clack + Turbo Pop
+  public playGearShift(isUpshift: boolean = true) {
+    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+
+    try {
+      const now = this.ctx.currentTime;
+
+      // Crisp metallic mechanical clack
+      const clack = this.ctx.createOscillator();
+      const clackGain = this.ctx.createGain();
+      clack.type = 'triangle';
+      clack.frequency.setValueAtTime(isUpshift ? 260 : 185, now);
+      clack.frequency.exponentialRampToValueAtTime(65, now + 0.075);
+
+      clackGain.gain.setValueAtTime(0.32, now);
+      clackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+
+      clack.connect(clackGain);
+      clackGain.connect(this.masterGain!);
+      clack.start(now);
+      clack.stop(now + 0.09);
+
+      // Subtle exhaust burst on high-load upshift or downshift blip
+      if (this.noiseBuffer) {
+        const puff = this.ctx.createBufferSource();
+        puff.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(isUpshift ? 520 : 780, now);
+        filter.Q.setValueAtTime(2.5, now);
+
+        const puffGain = this.ctx.createGain();
+        puffGain.gain.setValueAtTime(0.22, now);
+        puffGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+        puff.connect(filter);
+        filter.connect(puffGain);
+        puffGain.connect(this.masterGain!);
+        puff.start(now);
+        puff.stop(now + 0.1);
+      }
+    } catch (_) {}
+  }
+
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     if (this.masterGain && this.ctx) {

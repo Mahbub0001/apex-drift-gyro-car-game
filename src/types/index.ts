@@ -8,6 +8,10 @@ export interface ControllerInput {
   cameraSwitch: boolean;// toggle camera view
   angleDegrees: number; // raw tilt angle for HUD display
   horn?: boolean;       // honk supercar horn
+  shiftUpSeq?: number;  // monotonic counter for manual upshift (WebRTC safe)
+  shiftDownSeq?: number;// monotonic counter for manual downshift (WebRTC safe)
+  cameraSeq?: number;   // monotonic counter for camera toggle (WebRTC safe)
+  resetSeq?: number;    // monotonic counter for car reset (WebRTC safe)
   timestamp: number;
 }
 
@@ -18,11 +22,33 @@ export interface VehicleTelemetry {
   nitroFuel: number;    // 0 to 100
   isDrifting: boolean;
   driftScore: number;
+  totalScore?: number;
+  lastBankedDrift?: number;
   isAirborne: boolean;
   isJumping: boolean;   // Asphalt 9 cinematic jump active
   health: number;       // 0 to 100
   isOnCurb?: boolean;   // Wheels riding red/white rumble strip
+  isWrongWay?: boolean;
+  cameraMode?: 'chase' | 'hood';
+  lap?: number;
+  lapTimeMs?: number;
+  bestLapTimeMs?: number | null;
+  shouldShiftUp?: boolean; // Manual transmission redline cue (7400+ RPM)
 }
+
+export interface GameSettings {
+  graphicsQuality: 'ultra' | 'high' | 'medium';
+  defaultCamera: 'chase' | 'hood';
+  isMuted: boolean;
+  gyroSensitivity: number;
+}
+
+export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  graphicsQuality: 'ultra',
+  defaultCamera: 'chase',
+  isMuted: false,
+  gyroSensitivity: 1.2
+};
 
 export interface PeerMessage {
   type: 'INPUT' | 'PING' | 'PONG' | 'CALIBRATE' | 'FEEDBACK' | 'ROOM_STATE';

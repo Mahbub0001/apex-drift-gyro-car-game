@@ -4,10 +4,35 @@ import { GameEngine } from '../../game/core/Engine';
 import { HUDOverlay } from '../../game/ui/HUDOverlay';
 import { SoundEngine } from '../../game/audio/SoundEngine';
 import { WebRTCHost } from '../../services/webrtc';
-import { MultiplayerRoomManager } from '../../services/multiplayer';
-import { ControllerInput, VehicleTelemetry, TrafficCarState, RemotePlayerState, SuperCarConfig, SUPER_CARS } from '../../types';
+import { MultiplayerRoomManager, MultiplayerStatus } from '../../services/multiplayer';
+import {
+  ControllerInput,
+  VehicleTelemetry,
+  TrafficCarState,
+  RemotePlayerState,
+  SuperCarConfig,
+  SUPER_CARS,
+  GameSettings,
+  DEFAULT_GAME_SETTINGS
+} from '../../types';
 import QRCode from 'qrcode';
-import { QrCode, X, Users, Globe, Volume2, VolumeX, Warehouse, Copy, Check, ExternalLink, Wifi } from 'lucide-react';
+import {
+  QrCode,
+  X,
+  Users,
+  Globe,
+  Volume2,
+  VolumeX,
+  Warehouse,
+  Copy,
+  Check,
+  ExternalLink,
+  Wifi,
+  Play,
+  RefreshCw,
+  Sliders,
+  Home
+} from 'lucide-react';
 import { MobileTouchControls } from '../mobile/MobileTouchControls';
 import { MobileOrientationGuard } from '../mobile/MobileOrientationGuard';
 import { useDeviceOrientation } from '../../hooks/useDeviceOrientation';
@@ -22,6 +47,8 @@ interface GameViewProps {
   isInitialPhoneConnected?: boolean;
   initialOpenMultiplayer?: boolean;
   isMobileMode?: boolean;
+  settings?: GameSettings;
+  onUpdateSettings?: (partial: Partial<GameSettings>) => void;
   onSwitchToController?: () => void;
 }
 
@@ -34,6 +61,8 @@ export const GameView: React.FC<GameViewProps> = ({
   isInitialPhoneConnected = false,
   initialOpenMultiplayer = false,
   isMobileMode,
+  settings = DEFAULT_GAME_SETTINGS,
+  onUpdateSettings,
   onSwitchToController
 }) => {
   const isMobile = isMobileMode ?? isMobileDevice();
@@ -41,15 +70,21 @@ export const GameView: React.FC<GameViewProps> = ({
   const {
     steerNormalized: mobileSteer,
     angleDegrees: mobileAngle,
+    needsPermissionPrompt,
+    hasSensorSignal,
+    requestPermission: requestGyroPermission,
     recalibrate: recalibrateMobileGyro
-  } = useDeviceOrientation();
+  } = useDeviceOrientation(settings.gyroSensitivity);
+
+  const mobileSteerModeRef = useRef<'gyro' | 'touch'>('gyro');
+  const lastGyroPacketTimeRef = useRef<number>(0);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const hostRef = useRef<WebRTCHost | null>(null);
   const soundRef = useRef<SoundEngine | null>(null);
   const mpManagerRef = useRef<MultiplayerRoomManager | null>(null);
 
-  // Input Ref (Ensures Game Loop never restarts or re-renders on keypress/gyro)
   const inputRef = useRef<ControllerInput>({
     steer: 0,
     throttle: 0,
@@ -64,19 +99,29 @@ export const GameView: React.FC<GameViewProps> = ({
 
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
   const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(initialOpenMultiplayer);
-  const [mpUsername, setMpUsername] = useState<string>('Racer_' + Math.floor(Math.random() * 900 + 100));
+  const [isPauseOpen, setIsPauseOpen] = useState<boolean>(false);
+  const isPauseRef = useRef<boolean>(false);
+  const [mpUsername, setMpUsername] = useState<string>(
+    'Racer_' + Math.floor(Math.random() * 900 + 100)
+  );
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(isInitialPhoneConnected);
   const [ping, setPing] = useState<number>(0);
   const [activeInputSource, setActiveInputSource] = useState<'gyro' | 'keyboard'>('keyboard');
-  const [isMuted, setIsMuted] = useState<boolean>(false);
 
-  // Multiplayer Room State
-  const [mpRoomCode, setMpRoomCode] = useState<string>(roomId);
+  const [mpRoomCode, setMpRoomCode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const mp = new URLSearchParams(window.location.search).get('mp');
+      if (mp) return mp.toUpperCase().slice(0, 6);
+    }
+    return roomId;
+  });
   const [isMpConnected, setIsMpConnected] = useState<boolean>(false);
+  const [mpStatus, setMpStatus] = useState<MultiplayerStatus>('waiting');
+  const [mpStatusMsg, setMpStatusMsg] = useState<string>('');
+  const [copiedMpInvite, setCopiedMpInvite] = useState<boolean>(false);
   const [opponents, setOpponents] = useState<RemotePlayerState[]>([]);
 
-  // Throttled UI Telemetry for HUD (Updates at ~25 FPS to prevent React overhead)
   const [telemetry, setTelemetry] = useState<VehicleTelemetry>({
     speedKmh: 0,
     rpm: 850,
@@ -84,9 +129,16 @@ export const GameView: React.FC<GameViewProps> = ({
     nitroFuel: 100,
     isDrifting: false,
     driftScore: 0,
+    totalScore: 0,
+    lastBankedDrift: 0,
     isAirborne: false,
     isJumping: false,
-    health: 100
+    health: 100,
+    cameraMode: settings.defaultCamera,
+    lap: 1,
+    lapTimeMs: 0,
+    bestLapTimeMs: null,
+    isWrongWay: false
   });
 
   const [playerPos, setPlayerPos] = useState<THREE.Vector3>(new THREE.Vector3(0, 0.42, 10));
@@ -95,23 +147,42 @@ export const GameView: React.FC<GameViewProps> = ({
   const [isLetterboxed, setIsLetterboxed] = useState<boolean>(false);
   const [nearMissActive, setNearMissActive] = useState<boolean>(false);
 
-  // F1 Starting Countdown (3... 2... 1... GO!)
   const [countdown, setCountdown] = useState<number | 'GO!' | null>(3);
   const countdownRef = useRef<number | 'GO!' | null>(3);
   const lastHornRef = useRef<boolean>(false);
 
-  // Initialize Sound Engine
+  useEffect(() => {
+    isPauseRef.current = isPauseOpen;
+  }, [isPauseOpen]);
+
+  // Initialize Sound Engine respecting persisted mute setting
   useEffect(() => {
     const sound = new SoundEngine();
+    if (settings.isMuted) {
+      sound.toggleMute();
+    }
     soundRef.current = sound;
     return () => {
       sound.dispose();
     };
   }, []);
 
-  // Realtime Mobile Gyro Tilt Steering (when game runs directly on phone)
+  // Sync runtime graphics preset changes live into Three.js Engine
   useEffect(() => {
-    if (isMobile) {
+    engineRef.current?.applyGraphicsSettings(settings);
+  }, [settings]);
+
+  // Sync mute state cleanly when updated from Pause or Header
+  const toggleSound = () => {
+    if (!soundRef.current) return;
+    soundRef.current.init();
+    const muted = soundRef.current.toggleMute();
+    onUpdateSettings?.({ isMuted: muted });
+  };
+
+  // Realtime Mobile Gyro Tilt Steering (ONLY active when steerMode === 'gyro' — never fights touch arrows!)
+  useEffect(() => {
+    if (isMobile && mobileSteerModeRef.current === 'gyro') {
       inputRef.current.steer = mobileSteer;
       inputRef.current.angleDegrees = mobileAngle;
       setActiveInputSource('gyro');
@@ -123,7 +194,6 @@ export const GameView: React.FC<GameViewProps> = ({
     countdownRef.current = 3;
     setCountdown(3);
 
-    // Initial beep at 3
     const t0 = setTimeout(() => {
       soundRef.current?.init();
       soundRef.current?.playCountdownBeep(false);
@@ -161,23 +231,18 @@ export const GameView: React.FC<GameViewProps> = ({
     };
   }, []);
 
-  const toggleSound = () => {
-    if (soundRef.current) {
-      soundRef.current.init();
-      const muted = soundRef.current.toggleMute();
-      setIsMuted(muted);
-    }
-  };
-
-  // LAN IP Detection & Dynamic QR Code URL for Zero-Install Phone Gyro
+  // LAN IP Detection & Dynamic QR Code
   const [controllerUrl, setControllerUrl] = useState<string>('');
   const [lanIp, setLanIp] = useState<string>('');
   const [availableIps, setAvailableIps] = useState<string[]>([]);
+  const [httpsPort, setHttpsPort] = useState<number | null>(null);
+  const [preferHttpsQr, setPreferHttpsQr] = useState<boolean>(true);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   useEffect(() => {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isLocal) {
+    const isLocal =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal || window.location.protocol === 'http:') {
       fetch('/api/lan-ip')
         .then((res) => res.json())
         .then((data) => {
@@ -185,18 +250,23 @@ export const GameView: React.FC<GameViewProps> = ({
             setLanIp(data.primary);
             setAvailableIps(data.all || [data.primary]);
           }
+          if (typeof data?.httpsPort === 'number') {
+            setHttpsPort(data.httpsPort);
+          }
         })
         .catch(() => {
-          setLanIp('192.168.10.230');
+          setLanIp('localhost');
         });
     }
   }, []);
 
   useEffect(() => {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const host = isLocal ? (lanIp || '192.168.10.230') : window.location.hostname;
-    const port = window.location.port ? `:${window.location.port}` : '';
-    const protocol = window.location.protocol;
+    const isLocal =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const host = isLocal ? lanIp || window.location.hostname : window.location.hostname;
+    const useHttps = preferHttpsQr && httpsPort !== null && host !== 'localhost' && host !== '127.0.0.1';
+    const protocol = useHttps ? 'https:' : window.location.protocol;
+    const port = useHttps ? `:${httpsPort}` : window.location.port ? `:${window.location.port}` : '';
     const url = `${protocol}//${host}${port}/?mode=controller&room=${roomId}`;
     setControllerUrl(url);
 
@@ -206,14 +276,17 @@ export const GameView: React.FC<GameViewProps> = ({
       errorCorrectionLevel: 'M',
       color: { dark: '#000000', light: '#ffffff' }
     }).then(setQrDataUrl);
-  }, [roomId, lanIp]);
+  }, [roomId, lanIp, httpsPort, preferHttpsQr]);
 
-  // WebRTC Host Listener (Uses shared host from App level if present, or creates fallback)
+  // WebRTC + LAN Relay Host Listener ONLY when NOT on direct mobile_game mode (prevents PeerJS ID collision!)
   useEffect(() => {
+    if (isMobileMode) return;
+
     if (sharedHost) {
       hostRef.current = sharedHost;
       sharedHost.setInputCallback((incomingInput) => {
         soundRef.current?.init();
+        lastGyroPacketTimeRef.current = performance.now();
         inputRef.current = incomingInput;
         setActiveInputSource('gyro');
       });
@@ -237,6 +310,7 @@ export const GameView: React.FC<GameViewProps> = ({
     host.init(
       (incomingInput) => {
         soundRef.current?.init();
+        lastGyroPacketTimeRef.current = performance.now();
         inputRef.current = incomingInput;
         setActiveInputSource('gyro');
       },
@@ -253,36 +327,53 @@ export const GameView: React.FC<GameViewProps> = ({
       clearInterval(pingTimer);
       host.destroy();
     };
-  }, [roomId, sharedHost]);
+  }, [roomId, sharedHost, isMobileMode]);
 
   // Multiplayer Room Connection
   const startMultiplayer = (asHost: boolean) => {
+    mpManagerRef.current?.destroy();
+    const cleanCode = (mpRoomCode || roomId).toUpperCase().trim() || roomId;
+    setMpRoomCode(cleanCode);
+    setMpStatus('connecting');
+    setMpStatusMsg(asHost ? 'Creating room...' : `Joining ${cleanCode}...`);
+
     const hexColor = '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0');
     const mp = new MultiplayerRoomManager(
-      mpRoomCode,
-      mpUsername.trim() || ('Racer_' + Math.floor(Math.random() * 900 + 100)),
+      cleanCode,
+      mpUsername.trim() || 'Racer_' + Math.floor(Math.random() * 900 + 100),
       selectedCar.id,
       hexColor
     );
     mpManagerRef.current = mp;
 
-    mp.init(asHost, {
-      onPlayerJoined: (player) => {
-        const list = mp.getOpponentsList();
+    let lastMpUiSync = 0;
+    const syncList = () => {
+      const list = mp.getOpponentsList();
+      engineRef.current?.syncOpponents(list);
+      const now = performance.now();
+      if (now - lastMpUiSync > 200) {
+        lastMpUiSync = now;
         setOpponents(list);
+      }
+    };
+
+    mp.init(asHost, {
+      onPlayerJoined: () => {
+        const list = mp.getOpponentsList();
         engineRef.current?.syncOpponents(list);
+        setOpponents(list);
       },
       onPlayerLeft: () => {
         const list = mp.getOpponentsList();
-        setOpponents(list);
         engineRef.current?.syncOpponents(list);
-      },
-      onPlayerUpdate: () => {
-        const list = mp.getOpponentsList();
         setOpponents(list);
-        engineRef.current?.syncOpponents(list);
       },
-      onRoomReady: () => setIsMpConnected(true)
+      onPlayerUpdate: syncList,
+      onRoomReady: () => setIsMpConnected(true),
+      onStatusChange: (status, detail) => {
+        setMpStatus(status);
+        setMpStatusMsg(detail || '');
+      }
     });
 
     setIsMpConnected(true);
@@ -293,23 +384,83 @@ export const GameView: React.FC<GameViewProps> = ({
     mpManagerRef.current?.destroy();
     mpManagerRef.current = null;
     setIsMpConnected(false);
+    setMpStatus('waiting');
+    setMpStatusMsg('');
     setOpponents([]);
     engineRef.current?.syncOpponents([]);
   };
 
-  // Smooth Keyboard Controls
+  const copyMultiplayerInvite = () => {
+    const cleanCode = (mpRoomCode || roomId).toUpperCase().trim() || roomId;
+    const isLocal =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const host = isLocal && lanIp && lanIp !== 'localhost' ? lanIp : window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const inviteUrl = `${window.location.protocol}//${host}${port}/?mode=desktop&mp=${cleanCode}`;
+    navigator.clipboard?.writeText(inviteUrl).catch(() => {});
+    setCopiedMpInvite(true);
+    setTimeout(() => setCopiedMpInvite(false), 2000);
+  };
+
+  // Smooth Keyboard Controls + ESC Pause Shortcut
   useEffect(() => {
     const keys: Record<string, boolean> = {};
 
+    const DRIVING_KEYS = new Set([
+      'KeyA', 'KeyD', 'KeyW', 'KeyS',
+      'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+      'Space', 'KeyF', 'KeyN', 'KeyH'
+    ]);
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        if (e.key === 'Escape') {
+          setIsQrModalOpen(false);
+          setIsMpModalOpen(false);
+          setIsPauseOpen(false);
+        }
+        return;
+      }
+
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+        e.preventDefault();
+      }
+
+      if (e.code === 'Escape' || e.code === 'KeyP') {
+        e.preventDefault();
+        if (isQrModalOpen) setIsQrModalOpen(false);
+        else if (isMpModalOpen) setIsMpModalOpen(false);
+        else setIsPauseOpen((prev) => !prev);
+        return;
+      }
+
       soundRef.current?.init();
+
+      if (e.code === 'KeyC' && !e.repeat) {
+        engineRef.current?.cycleCamera();
+      } else if (e.code === 'KeyR' && !e.repeat) {
+        engineRef.current?.resetCar();
+      } else if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyE') && !e.repeat) {
+        engineRef.current?.shiftGearUp();
+      } else if ((e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'KeyQ') && !e.repeat) {
+        engineRef.current?.shiftGearDown();
+      }
+
       keys[e.code] = true;
-      updateKeyboard();
+      if (DRIVING_KEYS.has(e.code)) {
+        updateKeyboard();
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+      }
       keys[e.code] = false;
-      updateKeyboard();
+      if (DRIVING_KEYS.has(e.code)) {
+        updateKeyboard();
+      }
     };
 
     const updateKeyboard = () => {
@@ -324,10 +475,14 @@ export const GameView: React.FC<GameViewProps> = ({
       if (keys['KeyS'] || keys['ArrowDown']) brake = 1;
 
       const handbrake = !!keys['Space'];
-      const nitro = !!(keys['ShiftLeft'] || keys['ShiftRight']);
-      const cameraSwitch = !!keys['KeyC'];
-      const reset = !!keys['KeyR'];
+      const nitro = !!(keys['KeyF'] || keys['KeyN']);
       const horn = !!keys['KeyH'];
+
+      const hasActiveDrivingKey = steer !== 0 || throttle > 0 || brake > 0 || handbrake || nitro || horn;
+      const gyroStreamingRecently = performance.now() - lastGyroPacketTimeRef.current < 400;
+      if (!hasActiveDrivingKey && gyroStreamingRecently) {
+        return;
+      }
 
       setActiveInputSource('keyboard');
       inputRef.current = {
@@ -336,8 +491,8 @@ export const GameView: React.FC<GameViewProps> = ({
         brake,
         handbrake,
         nitro,
-        reset,
-        cameraSwitch,
+        reset: false,
+        cameraSwitch: false,
         horn,
         angleDegrees: Math.round(steer * 45),
         timestamp: Date.now()
@@ -350,25 +505,34 @@ export const GameView: React.FC<GameViewProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [isQrModalOpen, isMpModalOpen]);
 
-  // Update selected car dynamically without destroying engine
+  // Update selected car dynamically + propagate to Multiplayer
   useEffect(() => {
     if (engineRef.current) {
       engineRef.current.setCar(selectedCar);
     }
+    const hexColor = '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0');
+    mpManagerRef.current?.updateLocalIdentity(selectedCar.id, hexColor);
   }, [selectedCar]);
 
-  // Main Persistent Three.js Game Loop
+  // Main Three.js Game Loop
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const engine = new GameEngine(canvasRef.current, selectedCar);
+    const engine = new GameEngine(canvasRef.current, selectedCar, settings);
     engineRef.current = engine;
 
-    // Connect crash sound effect
     engine.onCrashCallback = (severity) => {
       soundRef.current?.playCrashImpact(severity);
+    };
+
+    engine.onDriftBankCallback = () => {
+      soundRef.current?.playDriftChime();
+    };
+
+    engine.onGearShiftCallback = (isUpshift) => {
+      soundRef.current?.playGearShift(isUpshift);
     };
 
     let lastTime = performance.now();
@@ -379,39 +543,36 @@ export const GameView: React.FC<GameViewProps> = ({
     const gameLoop = (currentTime: number) => {
       animationFrameId = requestAnimationFrame(gameLoop);
 
-      const delta = Math.min(0.05, (currentTime - lastTime) / 1000);
+      const rawDelta = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
+      const delta = isPauseRef.current ? 0.0001 : Math.min(0.05, rawDelta);
 
-      const rawInput = inputRef.current;
-      const currentInput = { ...rawInput };
+      const currentInput = { ...inputRef.current };
 
-      // Handle supercar horn
-      if (rawInput.horn && !lastHornRef.current) {
+      if (isPauseRef.current) {
+        engine.renderer.render(engine.scene, engine.camera);
+        return;
+      }
+
+      if (currentInput.horn && !lastHornRef.current) {
         soundRef.current?.playHorn();
       }
-      lastHornRef.current = !!rawInput.horn;
+      lastHornRef.current = !!currentInput.horn;
 
-      // Lock car at starting line during F1 countdown (3... 2... 1...)
-      if (countdownRef.current !== null && countdownRef.current !== 'GO!') {
-        currentInput.throttle = 0;
-        currentInput.nitro = false;
-      }
+      const isCountdownLocked = countdownRef.current !== null && countdownRef.current !== 'GO!';
 
-      // 1. Advance Physics & 3D Engine Frame
-      const currentTelemetry = engine.update(delta, currentInput);
+      const currentTelemetry = engine.update(delta, currentInput, isCountdownLocked);
 
-      // 2. Realistic Procedural Sound Engine
       soundRef.current?.update(
         currentTelemetry.rpm,
         currentTelemetry.speedKmh,
         currentTelemetry.isDrifting,
-        currentInput.nitro,
+        !isCountdownLocked && currentInput.nitro,
         currentInput.throttle,
         !!currentTelemetry.isOnCurb,
         currentInput.brake > 0.05
       );
 
-      // 3. Throttle React HUD Updates to 25 FPS (prevents page stutter/refresh feel)
       uiUpdateTimer += delta;
       if (uiUpdateTimer >= 0.04) {
         uiUpdateTimer = 0;
@@ -422,7 +583,6 @@ export const GameView: React.FC<GameViewProps> = ({
         setPlayerHeading(engine.vehiclePhysics.rotation.y);
         setTrafficStates(engine.trafficStates);
 
-        // Send feedback to mobile gyro controller
         hostRef.current?.sendFeedback({
           speedKmh: currentTelemetry.speedKmh,
           gear: currentTelemetry.gear,
@@ -430,7 +590,6 @@ export const GameView: React.FC<GameViewProps> = ({
         });
       }
 
-      // 4. Broadcast Multiplayer Position at 20 Hz
       mpBroadcastTimer += delta;
       if (mpBroadcastTimer >= 0.05 && mpManagerRef.current) {
         mpBroadcastTimer = 0;
@@ -450,29 +609,31 @@ export const GameView: React.FC<GameViewProps> = ({
 
     const handleResize = () => engine.handleResize();
     window.addEventListener('resize', handleResize);
+    // Guarantee clean resize once layout settles
+    const resizeTimer = setTimeout(handleResize, 50);
 
     return () => {
+      clearTimeout(resizeTimer);
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       engine.dispose();
       mpManagerRef.current?.destroy();
     };
-  }, []); // Run ONCE on mount! NEVER re-runs on input!
+  }, []);
 
   const content = (
-    <div className="relative w-full h-full overflow-hidden bg-[#0a0c12]">
-      {/* 3D WebGL Canvas */}
+    <div className="relative w-screen h-[100dvh] overflow-hidden bg-[#0a0c12]">
       <canvas ref={canvasRef} className="w-full h-full block" />
 
-      {/* High-Speed Radial Warp / Speed Streaks Effect (> 150 KM/H or Nitro) */}
-      {(telemetry.speedKmh > 150 || inputRef.current.nitro) && (
+      {/* High-Speed Radial Warp */}
+      {(telemetry.speedKmh > 155 || (inputRef.current.nitro && telemetry.nitroFuel > 0)) && (
         <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden mix-blend-screen transition-opacity duration-200">
-          <svg className="w-full h-full opacity-65" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+          <svg className="w-full h-full opacity-55" viewBox="0 0 1000 1000" preserveAspectRatio="none">
             <defs>
               <radialGradient id="warpGrad" cx="50%" cy="50%" r="50%">
                 <stop offset="0%" stopColor="transparent" />
-                <stop offset="65%" stopColor="rgba(0, 242, 254, 0.08)" />
-                <stop offset="100%" stopColor="rgba(0, 242, 254, 0.4)" />
+                <stop offset="65%" stopColor="rgba(0, 242, 254, 0.06)" />
+                <stop offset="100%" stopColor="rgba(0, 242, 254, 0.35)" />
               </radialGradient>
             </defs>
             <rect width="1000" height="1000" fill="url(#warpGrad)" />
@@ -480,57 +641,52 @@ export const GameView: React.FC<GameViewProps> = ({
             <line x1="500" y1="500" x2="0" y2="920" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
             <line x1="500" y1="500" x2="1000" y2="80" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
             <line x1="500" y1="500" x2="1000" y2="920" stroke="#00f2fe" strokeWidth="3" strokeDasharray="50 120" />
-            <line x1="500" y1="500" x2="150" y2="0" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
-            <line x1="500" y1="500" x2="850" y2="0" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
-            <line x1="500" y1="500" x2="150" y2="1000" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
-            <line x1="500" y1="500" x2="850" y2="1000" stroke="#c084fc" strokeWidth="2.5" strokeDasharray="60 90" />
           </svg>
-          <div className="absolute inset-0 shadow-[inset_0_0_120px_rgba(0,242,254,0.35)]" />
         </div>
       )}
 
-      {/* F1 5-Light Starting Gantry Countdown (3... 2... 1... GO!) */}
+      {/* F1 Starting Gantry Countdown (Responsive Scale on Mobile!) */}
       {countdown !== null && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none select-none">
-          {/* Carbon Fiber Gantry Light Housing */}
+        <div className="absolute top-12 sm:top-20 left-1/2 -translate-x-1/2 scale-75 sm:scale-100 origin-top z-50 flex flex-col items-center pointer-events-none select-none">
           <div className="glass-panel px-7 py-3.5 rounded-3xl border-2 border-white/20 bg-black/85 shadow-[0_0_50px_rgba(0,0,0,0.95)] flex items-center space-x-4">
             {[1, 2, 3, 4, 5].map((lightIdx) => {
-              const isRed = countdown === 3 ? lightIdx <= 2 : countdown === 2 ? lightIdx <= 4 : countdown === 1 ? true : false;
+              const isRed =
+                countdown === 3 ? lightIdx <= 2 : countdown === 2 ? lightIdx <= 4 : countdown === 1;
               const isGo = countdown === 'GO!';
               return (
-                <div key={lightIdx} className="flex flex-col items-center">
-                  <div
-                    className={`w-9 h-9 rounded-full border-2 transition-all duration-150 ${
-                      isGo
-                        ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_35px_#10b981]'
-                        : isRed
-                        ? 'bg-rose-600 border-rose-400 shadow-[0_0_30px_#ef4444]'
-                        : 'bg-zinc-900 border-zinc-700 shadow-inner'
-                    }`}
-                  />
-                </div>
+                <div
+                  key={lightIdx}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 transition-all duration-150 ${
+                    isGo
+                      ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_35px_#10b981]'
+                      : isRed
+                      ? 'bg-rose-600 border-rose-400 shadow-[0_0_30px_#ef4444]'
+                      : 'bg-zinc-900 border-zinc-700 shadow-inner'
+                  }`}
+                />
               );
             })}
           </div>
 
-          {/* Sub-label banner */}
-          <div className="mt-3 px-6 py-1.5 rounded-full bg-black/80 border border-white/10 backdrop-blur-md">
-            <span className={`font-display font-black tracking-widest text-2xl uppercase drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)] ${
-              countdown === 'GO!' ? 'text-emerald-400 animate-pulse text-3xl' : 'text-rose-400'
-            }`}>
+          <div className="mt-2.5 px-5 py-1 rounded-full bg-black/80 border border-white/10 backdrop-blur-md">
+            <span
+              className={`font-display font-black tracking-widest text-xl sm:text-2xl uppercase drop-shadow ${
+                countdown === 'GO!' ? 'text-emerald-400 animate-pulse' : 'text-rose-400'
+              }`}
+            >
               {countdown === 'GO!'
                 ? 'LIGHTS OUT & AWAY WE GO!'
                 : countdown === 3
                 ? 'STAGE 3 • GET READY'
                 : countdown === 2
                 ? 'STAGE 2 • REV ENGINES'
-                : 'STAGE 1 • HOLD BRAKE'}
+                : 'STAGE 1 • LAUNCH READY'}
             </span>
           </div>
         </div>
       )}
 
-      {/* Modern In-Game Racing HUD with Vector Radar Minimap */}
+      {/* Racing HUD */}
       {engineRef.current && (
         <HUDOverlay
           telemetry={telemetry}
@@ -545,10 +701,12 @@ export const GameView: React.FC<GameViewProps> = ({
           opponents={opponents}
           nearMissActive={nearMissActive}
           isMobile={isMobile}
+          onCameraClick={() => engineRef.current?.cycleCamera()}
+          onPauseClick={() => setIsPauseOpen(true)}
         />
       )}
 
-      {/* On-Screen Mobile Transparent Controls Overlay (Asphalt / Real Racing 3 Style) */}
+      {/* Mobile Touch & Gyro Controls */}
       {isMobile && (
         <MobileTouchControls
           onInputChange={(partialInput) => {
@@ -566,108 +724,170 @@ export const GameView: React.FC<GameViewProps> = ({
             }
           }}
           onCameraSwitch={() => {
-            inputRef.current.cameraSwitch = true;
-            setTimeout(() => {
-              inputRef.current.cameraSwitch = false;
-            }, 100);
+            engineRef.current?.cycleCamera();
           }}
           onResetCar={() => {
-            inputRef.current.reset = true;
-            setTimeout(() => {
-              inputRef.current.reset = false;
-            }, 100);
+            engineRef.current?.resetCar();
           }}
+          onShiftUp={() => {
+            soundRef.current?.init();
+            engineRef.current?.shiftGearUp();
+          }}
+          onShiftDown={() => {
+            soundRef.current?.init();
+            engineRef.current?.shiftGearDown();
+          }}
+          gear={telemetry.gear}
+          shouldShiftUp={telemetry.shouldShiftUp}
           onRecalibrateGyro={recalibrateMobileGyro}
           onOpenGarage={onOpenGarage}
+          onOpenPause={() => setIsPauseOpen(true)}
           onSwitchToControllerMode={onSwitchToController}
-          isMuted={isMuted}
+          onSteerModeChange={(m) => {
+            mobileSteerModeRef.current = m;
+            inputRef.current.steer = 0;
+            inputRef.current.angleDegrees = 0;
+          }}
+          needsGyroPermission={needsPermissionPrompt}
+          onRequestGyroPermission={requestGyroPermission}
+          isMuted={settings.isMuted}
           onToggleMute={toggleSound}
           currentAngleDegrees={mobileAngle}
+          speedKmh={telemetry.speedKmh}
+          hasGyroSignal={hasSensorSignal}
         />
       )}
 
-      {/* Floating Header Actions (Top Left - Desktop Only) */}
+      {/* Desktop Header Action Pills (Never steal Spacebar focus!) */}
       {!isMobile && (
-        <div className="absolute top-4 left-4 z-40 flex items-center space-x-2">
-        {onExit && (
+        <div className="absolute top-3.5 left-4 z-40 flex items-center space-x-2">
+          {onExit && (
+            <button
+              type="button"
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                soundRef.current?.playUiClick();
+                onExit();
+              }}
+              onMouseEnter={() => soundRef.current?.playUiHover()}
+              className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-white/15 text-xs font-bold font-racing uppercase tracking-wider text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto shadow-lg"
+              title="Return to Main Menu"
+            >
+              <span>← Menu</span>
+            </button>
+          )}
+
           <button
-            onClick={() => {
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.currentTarget.blur();
               soundRef.current?.playUiClick();
-              onExit();
+              setIsQrModalOpen(true);
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className="flex items-center space-x-1.5 glass-panel px-3 py-2 rounded-xl border border-white/10 text-xs font-bold font-racing uppercase tracking-wider text-gray-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all pointer-events-auto shadow-lg"
-            title="Return to Main Menu"
+            className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-cyan-500/35 text-xs font-bold font-racing uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
           >
-            <span>← Menu</span>
+            <QrCode className="w-4 h-4 text-cyan-400" />
+            <span>{isPhoneConnected ? 'Gyro Synced' : 'Phone Gyro'}</span>
           </button>
-        )}
 
-        <button
-          onClick={() => {
-            soundRef.current?.playUiClick();
-            setIsQrModalOpen(true);
-          }}
-          onMouseEnter={() => soundRef.current?.playUiHover()}
-          className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-cyan-500/30 text-xs font-bold font-racing uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
-        >
-          <QrCode className="w-4 h-4 text-cyan-400" />
-          <span>{isPhoneConnected ? 'Gyro Connected' : 'Phone Gyro'}</span>
-        </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              soundRef.current?.playUiClick();
+              onOpenGarage?.();
+            }}
+            onMouseEnter={() => soundRef.current?.playUiHover()}
+            className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-amber-500/35 text-xs font-bold font-racing uppercase tracking-wider text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
+          >
+            <Warehouse className="w-4 h-4 text-amber-400" />
+            <span>{selectedCar.name}</span>
+          </button>
 
-        <button
-          onClick={() => {
-            soundRef.current?.playUiClick();
-            onOpenGarage?.();
-          }}
-          onMouseEnter={() => soundRef.current?.playUiHover()}
-          className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-amber-500/30 text-xs font-bold font-racing uppercase tracking-wider text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
-        >
-          <Warehouse className="w-4 h-4 text-amber-400" />
-          <span>Garage ({selectedCar.name})</span>
-        </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              soundRef.current?.playUiClick();
+              setIsMpModalOpen(true);
+            }}
+            onMouseEnter={() => soundRef.current?.playUiHover()}
+            className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-purple-500/35 text-xs font-bold font-racing uppercase tracking-wider text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
+          >
+            <Users className="w-4 h-4 text-purple-400" />
+            <span>{isMpConnected ? `${mpRoomCode} (${opponents.length + 1})` : 'Multiplayer'}</span>
+          </button>
 
-        <button
-          onClick={() => {
-            soundRef.current?.playUiClick();
-            setIsMpModalOpen(true);
-          }}
-          onMouseEnter={() => soundRef.current?.playUiHover()}
-          className="flex items-center space-x-2 glass-panel px-3 py-2 rounded-xl border border-purple-500/30 text-xs font-bold font-racing uppercase tracking-wider text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
-        >
-          <Users className="w-4 h-4 text-purple-400" />
-          <span>{isMpConnected ? `Room: ${mpRoomCode} (${opponents.length + 1})` : 'Multiplayer'}</span>
-        </button>
-
-        <button
-          onClick={toggleSound}
-          className="p-2 glass-panel rounded-xl border border-white/10 text-gray-300 hover:text-white active:scale-95 transition-all pointer-events-auto shadow-lg"
-          title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
-        >
-          {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
-        </button>
-      </div>
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              toggleSound();
+            }}
+            aria-label={settings.isMuted ? 'Unmute Audio' : 'Mute Audio'}
+            className="p-2 hud-glass-capsule rounded-xl border border-white/15 text-gray-200 hover:text-white active:scale-95 transition-all pointer-events-auto shadow-lg"
+            title={settings.isMuted ? 'Unmute Audio' : 'Mute Audio'}
+          >
+            {settings.isMuted ? (
+              <VolumeX className="w-4 h-4 text-rose-400" />
+            ) : (
+              <Volume2 className="w-4 h-4 text-cyan-400" />
+            )}
+          </button>
+        </div>
       )}
 
-      {/* Live Multiplayer Race Hub (Top Right) */}
+      {/* Live Multiplayer Race Hub */}
       {isMpConnected && (
-        <div className="absolute top-16 right-4 z-40 glass-panel p-3 rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl shadow-purple-950/40 pointer-events-auto min-w-[220px]">
-          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-2 border-b border-white/10 pb-1.5">
+        <div className="absolute top-14 right-4 z-40 hud-glass-pod p-3 rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl pointer-events-auto min-w-[252px]">
+          <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-wider mb-1.5 border-b border-white/10 pb-1.5">
             <span className="flex items-center gap-1.5 text-purple-300">
-              <Globe className="w-3.5 h-3.5 text-purple-400" />
+              <Globe className={`w-3.5 h-3.5 ${mpStatus === 'error' ? 'text-rose-400' : 'text-purple-400'}`} />
               <span>ROOM: {mpRoomCode}</span>
             </span>
-            <button
-              onClick={leaveMultiplayer}
-              className="text-[10px] text-rose-400 hover:text-rose-300 font-mono px-2 py-0.5 rounded bg-rose-500/20 active:bg-rose-500/40 border border-rose-500/30"
-              title="Leave Multiplayer Room"
-            >
-              LEAVE
-            </button>
+            <div className="flex items-center space-x-1.5">
+              <button
+                onClick={copyMultiplayerInvite}
+                className="text-[10px] text-cyan-300 hover:text-cyan-200 font-mono px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30"
+                title="Copy multiplayer invite URL"
+              >
+                {copiedMpInvite ? 'COPIED' : 'INVITE'}
+              </button>
+              <button
+                onClick={leaveMultiplayer}
+                className="text-[10px] text-rose-400 hover:text-rose-300 font-mono px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/30"
+              >
+                LEAVE
+              </button>
+            </div>
           </div>
 
+          {mpStatusMsg && (
+            <div
+              className={`text-[10px] font-mono mb-1.5 px-1.5 py-0.5 rounded ${
+                mpStatus === 'error'
+                  ? 'bg-rose-500/20 text-rose-300'
+                  : mpStatus === 'connected'
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'bg-white/5 text-gray-300'
+              }`}
+            >
+              {mpStatusMsg}
+            </div>
+          )}
+
           <div className="space-y-1.5">
-            {/* Local Player */}
             <div className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-cyan-500/15 border border-cyan-500/30">
               <span className="font-bold text-cyan-300 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -676,10 +896,9 @@ export const GameView: React.FC<GameViewProps> = ({
               <span className="font-mono text-cyan-200">{telemetry.speedKmh} KM/H</span>
             </div>
 
-            {/* Remote Competitors */}
             {opponents.length === 0 ? (
               <div className="text-[11px] text-gray-400 italic py-1 px-2 text-center font-mono">
-                Waiting for competitors to join...
+                Waiting for racers to join...
               </div>
             ) : (
               opponents.map((opp) => (
@@ -687,8 +906,14 @@ export const GameView: React.FC<GameViewProps> = ({
                   key={opp.id}
                   className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white/5 border border-white/10"
                 >
-                  <span className="font-bold flex items-center gap-1.5" style={{ color: opp.color || '#a855f7' }}>
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: opp.color || '#a855f7' }} />
+                  <span
+                    className="font-bold flex items-center gap-1.5"
+                    style={{ color: opp.color || '#a855f7' }}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: opp.color || '#a855f7' }}
+                    />
                     {opp.username}
                   </span>
                   <span className="font-mono text-gray-300">{opp.speedKmh} KM/H</span>
@@ -699,12 +924,131 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       )}
 
+      {/* PAUSE & LIVE TUNING MENU MODAL */}
+      {isPauseOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Race Pause and Settings"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
+        >
+          <div className="glass-panel p-5 sm:p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white font-racing relative shadow-2xl my-auto">
+            <button
+              onClick={() => setIsPauseOpen(false)}
+              aria-label="Resume game"
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-xl font-display font-bold text-white mb-1 flex items-center gap-2">
+              <Sliders className="w-5 h-5 text-cyan-400" /> RACE PAUSED & SETTINGS
+            </h3>
+            <p className="text-xs text-gray-400 mb-4 font-mono">
+              Lap {telemetry.lap || 1} • Score {(telemetry.totalScore || 0).toLocaleString()} PTS
+            </p>
+
+            <div className="space-y-3.5 mb-5">
+              {/* Graphics Preset */}
+              <div>
+                <span className="text-[11px] uppercase font-bold text-gray-300 block mb-1.5 font-mono">
+                  GRAPHICS QUALITY
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['ultra', 'high', 'medium'] as const).map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => onUpdateSettings?.({ graphicsQuality: q })}
+                      className={`py-1.5 rounded-xl text-xs font-bold uppercase font-mono border transition-all ${
+                        settings.graphicsQuality === q
+                          ? 'bg-cyan-500 text-black border-cyan-400'
+                          : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gyro Sensitivity */}
+              <div>
+                <div className="flex items-center justify-between text-[11px] uppercase font-bold text-gray-300 mb-1 font-mono">
+                  <label htmlFor="pause-gyro-sens">GYRO STEER SENSITIVITY</label>
+                  <span className="text-cyan-400">{settings.gyroSensitivity.toFixed(1)}x</span>
+                </div>
+                <input
+                  id="pause-gyro-sens"
+                  type="range"
+                  min={0.7}
+                  max={2.0}
+                  step={0.1}
+                  value={settings.gyroSensitivity}
+                  onChange={(e) =>
+                    onUpdateSettings?.({ gyroSensitivity: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-cyan-400 cursor-pointer"
+                />
+              </div>
+
+              {/* Quick Tools */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    engineRef.current?.resetCar();
+                    setIsPauseOpen(false);
+                  }}
+                  className="py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-1.5 border border-white/10"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Reset Car</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsPauseOpen(false);
+                    setIsMpModalOpen(true);
+                  }}
+                  className="py-2 bg-purple-600/30 hover:bg-purple-600/45 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-1.5 border border-purple-500/40 text-purple-200"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Multiplayer</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col space-y-2">
+              <button
+                onClick={() => setIsPauseOpen(false)}
+                className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-display font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+              >
+                <Play className="w-4 h-4 fill-white" /> RESUME RACE
+              </button>
+
+              {!isMobile && onExit && (
+                <button
+                  onClick={onExit}
+                  className="w-full py-2 bg-white/5 hover:bg-rose-500/20 text-gray-300 hover:text-rose-200 border border-white/10 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                >
+                  <Home className="w-3.5 h-3.5" /> EXIT TO MAIN MENU
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* QR Code Connect Modal */}
       {isQrModalOpen && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white text-center font-racing relative shadow-2xl shadow-cyan-950/60">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pair Gyro Controller"
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
+        >
+          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white text-center font-racing relative shadow-2xl">
             <button
               onClick={() => setIsQrModalOpen(false)}
+              aria-label="Close QR Modal"
               className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
             >
               <X className="w-4 h-4" />
@@ -714,10 +1058,10 @@ export const GameView: React.FC<GameViewProps> = ({
               <QrCode className="w-5 h-5 text-cyan-400" /> PAIR GYRO CONTROLLER
             </h3>
             <p className="text-xs text-gray-400 mb-3">
-              Scan with your phone's camera (same Wi-Fi) to turn your phone into a physical tilt steering wheel!
+              Scan with your phone&apos;s camera (same Wi-Fi) to turn your phone into a physical tilt steering wheel!
             </p>
 
-            <div className="bg-white p-3.5 rounded-2xl shadow-xl shadow-cyan-500/10 flex flex-col items-center justify-center mb-3">
+            <div className="bg-white p-3.5 rounded-2xl shadow-xl flex flex-col items-center justify-center mb-3">
               {qrDataUrl ? (
                 <img src={qrDataUrl} alt="QR Code" className="w-52 h-52 rounded-lg select-none block" />
               ) : (
@@ -727,18 +1071,20 @@ export const GameView: React.FC<GameViewProps> = ({
               )}
             </div>
 
-            {/* Room Code Badge */}
             <div className="flex items-center justify-between bg-cyan-950/50 border border-cyan-500/40 p-2.5 rounded-xl mb-3">
-              <span className="text-xs text-cyan-200 font-bold uppercase tracking-wider">PAIRING CODE:</span>
+              <span className="text-xs text-cyan-200 font-bold uppercase tracking-wider">
+                PAIRING CODE:
+              </span>
               <span className="font-mono font-extrabold text-lg text-cyan-300 tracking-widest bg-black/80 px-3 py-0.5 rounded border border-cyan-500/50">
                 {roomId}
               </span>
             </div>
 
-            {/* Connection Link & Copy */}
             <div className="bg-black/40 border border-white/10 rounded-lg p-2.5 mb-3 text-left">
               <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 mb-1">
-                <span className="flex items-center gap-1 text-cyan-400"><Wifi className="w-3 h-3" /> Controller Link:</span>
+                <span className="flex items-center gap-1 text-cyan-400">
+                  <Wifi className="w-3 h-3" /> Controller Link:
+                </span>
                 <button
                   onClick={() => {
                     if (controllerUrl) {
@@ -756,9 +1102,21 @@ export const GameView: React.FC<GameViewProps> = ({
               <div className="text-[11px] font-mono text-gray-300 break-all select-all bg-black/60 p-1.5 rounded">
                 {controllerUrl || 'Detecting network...'}
               </div>
+              {httpsPort !== null && (
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-white/10 text-[10px] font-mono">
+                  <span className="text-gray-400">
+                    {preferHttpsQr ? 'First open: Advanced → Proceed (for Gyro)' : 'HTTP mode (Drag wheel if gyro blocked)'}
+                  </span>
+                  <button
+                    onClick={() => setPreferHttpsQr((prev) => !prev)}
+                    className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold"
+                  >
+                    {preferHttpsQr ? 'HTTPS (GYRO)' : 'HTTP'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* IP Switcher if multiple LAN adapters */}
             {availableIps.length > 1 && (
               <div className="flex items-center justify-center gap-2 mb-3 text-[11px] font-mono text-gray-400">
                 <span>Wi-Fi / LAN IP:</span>
@@ -774,7 +1132,6 @@ export const GameView: React.FC<GameViewProps> = ({
               </div>
             )}
 
-            {/* Status & Test in Tab Button */}
             <div className="flex items-center justify-between text-xs font-mono text-gray-300 mb-4 px-1">
               <div className="flex items-center space-x-2">
                 <span className={`w-2 h-2 rounded-full ${isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
@@ -792,7 +1149,7 @@ export const GameView: React.FC<GameViewProps> = ({
 
             <button
               onClick={() => setIsQrModalOpen(false)}
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-xl font-bold uppercase text-xs tracking-wider transition-all shadow-lg shadow-cyan-500/20"
+              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-xl font-bold uppercase text-xs tracking-wider"
             >
               RESUME RACING
             </button>
@@ -802,10 +1159,16 @@ export const GameView: React.FC<GameViewProps> = ({
 
       {/* Multiplayer Lobby Modal */}
       {isMpModalOpen && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="glass-panel p-6 rounded-2xl border border-purple-500/40 max-w-md w-full text-white font-racing relative shadow-2xl shadow-purple-950/60">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Multiplayer Racing Lobby"
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
+        >
+          <div className="glass-panel p-6 rounded-2xl border border-purple-500/40 max-w-md w-full text-white font-racing relative shadow-2xl my-auto">
             <button
               onClick={() => setIsMpModalOpen(false)}
+              aria-label="Close Multiplayer Modal"
               className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
             >
               <X className="w-4 h-4" />
@@ -817,17 +1180,17 @@ export const GameView: React.FC<GameViewProps> = ({
                 Multiplayer Racing Lobby
               </h3>
             </div>
-            <p className="text-xs text-gray-400 mb-5">
-              Race in real-time against friends on the 7.6 KM Grand Alpine highway via zero-server P2P WebRTC.
+            <p className="text-xs text-gray-400 mb-4">
+              Race in real-time against friends on the 12.5 KM Grand Circuit via P2P WebRTC.
             </p>
 
             <div className="space-y-4">
-              {/* Driver Handle */}
               <div>
-                <label className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
+                <label htmlFor="mp-username" className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
                   Driver Name
                 </label>
                 <input
+                  id="mp-username"
                   type="text"
                   maxLength={16}
                   value={mpUsername}
@@ -837,20 +1200,20 @@ export const GameView: React.FC<GameViewProps> = ({
                 />
               </div>
 
-              {/* Room Code */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] uppercase font-bold text-gray-400">
+                  <label htmlFor="mp-roomcode" className="text-[11px] uppercase font-bold text-gray-400">
                     Room Code (6 Characters)
                   </label>
                   <button
                     onClick={() => setMpRoomCode(roomId)}
                     className="text-[10px] text-cyan-400 hover:underline font-mono"
                   >
-                    Use Gyro Room ({roomId})
+                    Use Default ({roomId})
                   </button>
                 </div>
                 <input
+                  id="mp-roomcode"
                   type="text"
                   maxLength={6}
                   value={mpRoomCode}
@@ -859,21 +1222,28 @@ export const GameView: React.FC<GameViewProps> = ({
                 />
               </div>
 
-              {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   onClick={() => startMultiplayer(true)}
-                  className="py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-lg shadow-cyan-500/25"
+                  className="py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
                 >
                   Host Room
                 </button>
                 <button
                   onClick={() => startMultiplayer(false)}
-                  className="py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-lg shadow-purple-500/25"
+                  className="py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
                 >
                   Join Room
                 </button>
               </div>
+
+              <button
+                onClick={copyMultiplayerInvite}
+                className="w-full py-2 bg-white/10 hover:bg-white/15 border border-cyan-500/30 text-cyan-300 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+              >
+                {copiedMpInvite ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedMpInvite ? `INVITE LINK COPIED (${mpRoomCode})!` : `COPY INVITE LINK FOR FRIENDS (${mpRoomCode})`}</span>
+              </button>
 
               {isMpConnected && (
                 <div className="pt-2 border-t border-white/10">
@@ -894,7 +1264,10 @@ export const GameView: React.FC<GameViewProps> = ({
 
   if (isMobile) {
     return (
-      <MobileOrientationGuard onSwitchToController={onSwitchToController}>
+      <MobileOrientationGuard
+        onSwitchToController={onSwitchToController}
+        onRequestGyroPermission={requestGyroPermission}
+      >
         {content}
       </MobileOrientationGuard>
     );

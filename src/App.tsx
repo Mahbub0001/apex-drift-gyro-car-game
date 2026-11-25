@@ -1,15 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { HomeView } from './components/desktop/HomeView';
 import { MobileController } from './components/controller/MobileController';
 import { GameView } from './components/desktop/GameView';
 import { GarageView } from './components/desktop/GarageView';
 import { WebRTCHost } from './services/webrtc';
-import { SUPER_CARS, SuperCarConfig } from './types';
+import { SUPER_CARS, SuperCarConfig, GameSettings, DEFAULT_GAME_SETTINGS } from './types';
 import { isMobileDevice } from './utils/device';
 
-export const App: React.FC = () => {
-  const isMobile = isMobileDevice();
+const SETTINGS_STORAGE_KEY = 'apex_drift_settings_v1';
 
+function loadSavedSettings(): GameSettings {
+  if (typeof window === 'undefined') return DEFAULT_GAME_SETTINGS;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_GAME_SETTINGS;
+    return { ...DEFAULT_GAME_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_GAME_SETTINGS;
+  }
+}
+
+export const App: React.FC = () => {
   const [mode, setMode] = useState<'desktop' | 'controller' | 'mobile_game'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -25,7 +36,6 @@ export const App: React.FC = () => {
       if (urlParams.get('mode') === 'game') {
         return 'mobile_game';
       }
-      // When opened on smartphone: directly start mobile game landscape experience!
       if (isMobileDevice()) {
         return 'mobile_game';
       }
@@ -34,16 +44,30 @@ export const App: React.FC = () => {
   });
 
   const [gameState, setGameState] = useState<'home' | 'garage' | 'racing'>(() => {
-    if (typeof window !== 'undefined' && isMobileDevice()) {
+    if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') !== 'desktop') {
+      if (urlParams.get('mp')) {
+        return 'racing';
+      }
+      if (isMobileDevice() && urlParams.get('mode') !== 'desktop') {
         return 'racing';
       }
     }
     return 'home';
   });
 
-  const [selectedCar, setSelectedCar] = useState<SuperCarConfig>(SUPER_CARS[0]); // Default to RAPTOR
+  const [selectedCar, setSelectedCar] = useState<SuperCarConfig>(SUPER_CARS[0]);
+  const [settings, setSettings] = useState<GameSettings>(loadSavedSettings);
+
+  const updateSettings = useCallback((partial: Partial<GameSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...partial };
+      try {
+        window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+  }, []);
 
   const [roomId, setRoomId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -56,7 +80,12 @@ export const App: React.FC = () => {
   });
 
   const [isPhoneConnected, setIsPhoneConnected] = useState<boolean>(false);
-  const [openMpOnStart, setOpenMpOnStart] = useState<boolean>(false);
+  const [openMpOnStart, setOpenMpOnStart] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return !!new URLSearchParams(window.location.search).get('mp');
+    }
+    return false;
+  });
   const hostRef = useRef<WebRTCHost | null>(null);
 
   useEffect(() => {
@@ -67,16 +96,16 @@ export const App: React.FC = () => {
     }
   }, [roomId]);
 
-  // Persistent WebRTC Host (Only on desktop host or when needed)
+  // Initialize Persistent WebRTC Host ONLY in Desktop Host mode (prevents PeerJS ID collisions on Mobile!)
   useEffect(() => {
-    if (mode === 'controller') return;
+    if (mode !== 'desktop') return;
 
     const host = new WebRTCHost(roomId);
     hostRef.current = host;
 
     host.init(
       (_input) => {
-        // Connected phone sends gyro data
+        // Active callback is attached when GameView mounts
       },
       (connected) => {
         setIsPhoneConnected(connected);
@@ -89,12 +118,12 @@ export const App: React.FC = () => {
     };
   }, [mode, roomId]);
 
-  // 1. Phone Controller Gamepad Mode (e.g. when pairing with PC)
+  // 1. Phone Controller Gamepad Mode
   if (mode === 'controller') {
     return <MobileController roomId={roomId} />;
   }
 
-  // 2. Direct Mobile Game Mode (Full landscape 3D game with transparent touch controls)
+  // 2. Direct Mobile Game Mode
   if (mode === 'mobile_game') {
     if (gameState === 'garage') {
       return (
@@ -104,8 +133,8 @@ export const App: React.FC = () => {
             setSelectedCar(car);
             setGameState('racing');
           }}
-          onOpenGyroModal={() => setGameState('racing')}
           isPhoneConnected={false}
+          isMobileMode={true}
           onBackToHome={() => setGameState('racing')}
         />
       );
@@ -119,14 +148,16 @@ export const App: React.FC = () => {
         onExit={() => setGameState('racing')}
         sharedHost={null}
         isInitialPhoneConnected={false}
-        initialOpenMultiplayer={false}
+        initialOpenMultiplayer={openMpOnStart}
         isMobileMode={true}
+        settings={settings}
+        onUpdateSettings={updateSettings}
         onSwitchToController={() => setMode('controller')}
       />
     );
   }
 
-  // 3. Desktop Mode (Default on PC & Laptop computers)
+  // 3. Desktop Mode
   if (gameState === 'home') {
     return (
       <HomeView
@@ -143,6 +174,8 @@ export const App: React.FC = () => {
           setOpenMpOnStart(true);
           setGameState('racing');
         }}
+        settings={settings}
+        onUpdateSettings={updateSettings}
       />
     );
   }
@@ -175,6 +208,8 @@ export const App: React.FC = () => {
       isInitialPhoneConnected={isPhoneConnected}
       initialOpenMultiplayer={openMpOnStart}
       isMobileMode={false}
+      settings={settings}
+      onUpdateSettings={updateSettings}
     />
   );
 };
