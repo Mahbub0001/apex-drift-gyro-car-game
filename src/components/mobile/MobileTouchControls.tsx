@@ -39,6 +39,7 @@ interface MobileTouchControlsProps {
   currentAngleDegrees?: number;
   speedKmh?: number;
   hasGyroSignal?: boolean;
+  isRotated90?: boolean;
 }
 
 export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
@@ -60,7 +61,8 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   onToggleMute,
   currentAngleDegrees = 0,
   speedKmh = 0,
-  hasGyroSignal = true
+  hasGyroSignal = true,
+  isRotated90 = false
 }) => {
   const [throttle, setThrottle] = useState<number>(0);
   const [brake, setBrake] = useState<number>(0);
@@ -116,8 +118,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   const handleThrottlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activeThrottlePointerId.current !== e.pointerId || !throttleContainerRef.current) return;
     const rect = throttleContainerRef.current.getBoundingClientRect();
-    const relativeY = e.clientY - rect.top;
-    const ratio = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
+    const ratio = isRotated90
+      ? Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)))
+      : Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
     const scaled = Math.min(1.0, Math.max(0.25, ratio * 1.25));
     const rounded = Number(scaled.toFixed(2));
     setThrottle(rounded);
@@ -148,8 +151,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   const handleBrakePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activeBrakePointerId.current !== e.pointerId || !brakeContainerRef.current) return;
     const rect = brakeContainerRef.current.getBoundingClientRect();
-    const relativeY = e.clientY - rect.top;
-    const ratio = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
+    const ratio = isRotated90
+      ? Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)))
+      : Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
     const rounded = Number(ratio.toFixed(2));
     setBrake(rounded);
     onInputChange({ brake: rounded });
@@ -436,7 +440,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             onPointerCancel={handleBrakePointerUp}
             role="button"
             aria-label="Brake Pedal"
-            className={`w-24 sm:w-28 h-36 sm:h-44 rounded-3xl relative overflow-hidden flex flex-col justify-end p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
+            className={`w-20 sm:w-24 md:w-28 h-32 sm:h-36 md:h-44 rounded-3xl relative overflow-hidden flex flex-col justify-end p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
               brake > 0.05
                 ? 'bg-rose-950/60 border-rose-400 shadow-[0_0_30px_rgba(244,63,94,0.55)]'
                 : 'bg-slate-950/40 border-white/25 hover:border-white/40'
@@ -471,7 +475,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                   onShiftDown();
                 }}
                 aria-label="Shift Gear Down"
-                className="w-[72px] sm:w-20 h-14 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border border-amber-400/50 bg-slate-950/65 hover:bg-amber-500/25 active:bg-amber-500/45 text-amber-300 flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none"
+                className="w-16 sm:w-[72px] md:w-20 h-12 sm:h-14 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border border-amber-400/50 bg-slate-950/65 hover:bg-amber-500/25 active:bg-amber-500/45 text-amber-300 flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none"
               >
                 <div className="flex items-center space-x-0.5 leading-none">
                   <span className="text-[10px] font-mono">GEAR</span>
@@ -499,7 +503,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 setHandbrake(false);
                 onInputChange({ handbrake: false });
               }}
-              className={`w-[72px] sm:w-20 h-24 rounded-2xl font-display font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-2 ${
+              className={`w-16 sm:w-[72px] md:w-20 h-20 sm:h-24 rounded-2xl font-display font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1.5 sm:px-2 ${
                 handbrake
                   ? 'bg-rose-600/80 text-white shadow-[0_0_28px_rgba(244,63,94,0.7)] border-rose-300'
                   : 'bg-slate-950/45 text-rose-200 border-rose-500/45 active:bg-rose-500/50'
@@ -523,7 +527,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                   onShiftUp();
                 }}
                 aria-label="Shift Gear Up"
-                className={`w-[72px] sm:w-20 h-14 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none ${
+                className={`w-16 sm:w-[72px] md:w-20 h-12 sm:h-14 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none ${
                   shouldShiftUp
                     ? 'bg-rose-600/85 border-cyan-300 text-white shadow-[0_0_24px_rgba(0,242,254,0.85)] animate-pulse'
                     : 'bg-slate-950/65 border-cyan-400/50 text-cyan-300 hover:bg-cyan-500/25 active:bg-cyan-500/45'
@@ -555,7 +559,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 setNitro(false);
                 onInputChange({ nitro: false });
               }}
-              className={`w-[72px] sm:w-20 h-24 rounded-2xl font-display font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-2 ${
+              className={`w-16 sm:w-[72px] md:w-20 h-20 sm:h-24 rounded-2xl font-display font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1.5 sm:px-2 ${
                 nitro
                   ? 'bg-gradient-to-r from-purple-600/85 to-cyan-500/85 text-white shadow-[0_0_30px_rgba(168,85,247,0.8)] border-cyan-300'
                   : 'bg-slate-950/45 text-cyan-200 border-purple-500/45 active:bg-purple-600/50'
@@ -575,7 +579,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             onPointerCancel={handleThrottlePointerUp}
             role="button"
             aria-label="Gas Accelerator Pedal"
-            className={`w-24 sm:w-28 h-36 sm:h-44 rounded-3xl relative overflow-hidden flex flex-col justify-end p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
+            className={`w-20 sm:w-24 md:w-28 h-32 sm:h-36 md:h-44 rounded-3xl relative overflow-hidden flex flex-col justify-end p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
               throttle > 0.05
                 ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_30px_rgba(0,242,254,0.55)]'
                 : 'bg-slate-950/40 border-white/25 hover:border-white/40'

@@ -415,7 +415,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
       {/* 7. Mobile Sleek Compact Speedometer Capsule */}
       {isMobile && (
-        <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 hud-glass-capsule px-3.5 py-1.5 rounded-2xl border border-white/20 flex flex-col items-center pointer-events-none z-20 shadow-2xl min-w-[215px] max-w-[245px]">
+        <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 hud-glass-capsule px-2.5 sm:px-3.5 py-1.5 rounded-2xl border border-white/20 flex flex-col items-center pointer-events-none z-20 shadow-2xl min-w-[168px] sm:min-w-[215px] max-w-[235px]">
           <div className="flex items-center space-x-0.5 w-full mb-1">
             {Array.from({ length: 14 }).map((_, i) => {
               const isActive = i < Math.round((rpmPercent / 100) * 14);

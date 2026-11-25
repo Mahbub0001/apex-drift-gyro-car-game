@@ -10,12 +10,14 @@ import {
   VehicleTelemetry,
   TrafficCarState,
   RemotePlayerState,
+  RaceFinishEntry,
   SuperCarConfig,
   SUPER_CARS,
   GameSettings,
   DEFAULT_GAME_SETTINGS
 } from '../../types';
 import QRCode from 'qrcode';
+import confetti from 'canvas-confetti';
 import {
   QrCode,
   X,
@@ -31,7 +33,9 @@ import {
   Play,
   RefreshCw,
   Sliders,
-  Home
+  Home,
+  Trophy,
+  Flag
 } from 'lucide-react';
 import { MobileTouchControls } from '../mobile/MobileTouchControls';
 import { MobileOrientationGuard } from '../mobile/MobileOrientationGuard';
@@ -117,10 +121,21 @@ export const GameView: React.FC<GameViewProps> = ({
     return roomId;
   });
   const [isMpConnected, setIsMpConnected] = useState<boolean>(false);
+  const [isMpHost, setIsMpHost] = useState<boolean>(true);
+  const [mpTargetLaps, setMpTargetLaps] = useState<number>(1);
+  const mpTargetLapsRef = useRef<number>(1);
   const [mpStatus, setMpStatus] = useState<MultiplayerStatus>('waiting');
   const [mpStatusMsg, setMpStatusMsg] = useState<string>('');
   const [copiedMpInvite, setCopiedMpInvite] = useState<boolean>(false);
   const [opponents, setOpponents] = useState<RemotePlayerState[]>([]);
+  const [raceResults, setRaceResults] = useState<RaceFinishEntry[]>([]);
+  const [localRaceFinished, setLocalRaceFinished] = useState<boolean>(false);
+  const [dismissedPodium, setDismissedPodium] = useState<boolean>(false);
+  const localRaceFinishedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    mpTargetLapsRef.current = mpTargetLaps;
+  }, [mpTargetLaps]);
 
   const [telemetry, setTelemetry] = useState<VehicleTelemetry>({
     speedKmh: 0,
@@ -189,45 +204,47 @@ export const GameView: React.FC<GameViewProps> = ({
     }
   }, [isMobile, mobileSteer, mobileAngle]);
 
-  // F1 Starting Grid Countdown Timer
-  useEffect(() => {
+  const countdownTimersRef = useRef<number[]>([]);
+
+  const startGridCountdown = () => {
+    countdownTimersRef.current.forEach((id) => clearTimeout(id));
+    countdownTimersRef.current = [];
     countdownRef.current = 3;
     setCountdown(3);
 
-    const t0 = setTimeout(() => {
-      soundRef.current?.init();
-      soundRef.current?.playCountdownBeep(false);
-    }, 150);
+    countdownTimersRef.current.push(
+      window.setTimeout(() => {
+        soundRef.current?.init();
+        soundRef.current?.playCountdownBeep(false);
+      }, 150),
+      window.setTimeout(() => {
+        countdownRef.current = 2;
+        setCountdown(2);
+        soundRef.current?.playCountdownBeep(false);
+      }, 1150),
+      window.setTimeout(() => {
+        countdownRef.current = 1;
+        setCountdown(1);
+        soundRef.current?.playCountdownBeep(false);
+      }, 2150),
+      window.setTimeout(() => {
+        countdownRef.current = 'GO!';
+        setCountdown('GO!');
+        soundRef.current?.playCountdownBeep(true);
+      }, 3150),
+      window.setTimeout(() => {
+        countdownRef.current = null;
+        setCountdown(null);
+      }, 4200)
+    );
+  };
 
-    const t1 = setTimeout(() => {
-      countdownRef.current = 2;
-      setCountdown(2);
-      soundRef.current?.playCountdownBeep(false);
-    }, 1150);
-
-    const t2 = setTimeout(() => {
-      countdownRef.current = 1;
-      setCountdown(1);
-      soundRef.current?.playCountdownBeep(false);
-    }, 2150);
-
-    const t3 = setTimeout(() => {
-      countdownRef.current = 'GO!';
-      setCountdown('GO!');
-      soundRef.current?.playCountdownBeep(true);
-    }, 3150);
-
-    const t4 = setTimeout(() => {
-      countdownRef.current = null;
-      setCountdown(null);
-    }, 4200);
-
+  // F1 Starting Grid Countdown Timer
+  useEffect(() => {
+    startGridCountdown();
     return () => {
-      clearTimeout(t0);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
+      countdownTimersRef.current.forEach((id) => clearTimeout(id));
+      countdownTimersRef.current = [];
     };
   }, []);
 
@@ -278,7 +295,7 @@ export const GameView: React.FC<GameViewProps> = ({
     }).then(setQrDataUrl);
   }, [roomId, lanIp, httpsPort, preferHttpsQr]);
 
-  // WebRTC + LAN Relay Host Listener ONLY when NOT on direct mobile_game mode (prevents PeerJS ID collision!)
+  // Attach to App-owned WebRTC Host ONLY in Desktop mode (never spin up a duplicate WebRTCHost if sharedHost !== undefined!)
   useEffect(() => {
     if (isMobileMode) return;
 
@@ -303,6 +320,9 @@ export const GameView: React.FC<GameViewProps> = ({
         clearInterval(pingTimer);
       };
     }
+
+    // If sharedHost prop was explicitly passed as null (App is initializing it), wait for sharedHost
+    if (sharedHost === null) return;
 
     const host = new WebRTCHost(roomId);
     hostRef.current = host;
@@ -330,19 +350,43 @@ export const GameView: React.FC<GameViewProps> = ({
   }, [roomId, sharedHost, isMobileMode]);
 
   // Multiplayer Room Connection
+  const handleResetRaceState = (nextTargetLaps?: number) => {
+    if (typeof nextTargetLaps === 'number') {
+      setMpTargetLaps(nextTargetLaps);
+      mpTargetLapsRef.current = nextTargetLaps;
+    }
+    localRaceFinishedRef.current = false;
+    setLocalRaceFinished(false);
+    setDismissedPodium(false);
+    setRaceResults([]);
+    const laneX = mpManagerRef.current?.isHost ? -2.2 : 2.2;
+    engineRef.current?.vehiclePhysics.resetRace(new THREE.Vector3(laneX, 0.64, 10));
+    startGridCountdown();
+  };
+
   const startMultiplayer = (asHost: boolean) => {
     mpManagerRef.current?.destroy();
     const cleanCode = (mpRoomCode || roomId).toUpperCase().trim() || roomId;
     setMpRoomCode(cleanCode);
+    setIsMpHost(asHost);
     setMpStatus('connecting');
     setMpStatusMsg(asHost ? 'Creating room...' : `Joining ${cleanCode}...`);
+    localRaceFinishedRef.current = false;
+    setLocalRaceFinished(false);
+    setDismissedPodium(false);
+    setRaceResults([]);
+    engineRef.current?.vehiclePhysics.resetRace(
+      new THREE.Vector3(asHost ? -2.2 : 2.2, 0.64, 10)
+    );
+    startGridCountdown();
 
     const hexColor = '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0');
     const mp = new MultiplayerRoomManager(
       cleanCode,
       mpUsername.trim() || 'Racer_' + Math.floor(Math.random() * 900 + 100),
       selectedCar.id,
-      hexColor
+      hexColor,
+      mpTargetLapsRef.current
     );
     mpManagerRef.current = mp;
 
@@ -373,6 +417,22 @@ export const GameView: React.FC<GameViewProps> = ({
       onStatusChange: (status, detail) => {
         setMpStatus(status);
         setMpStatusMsg(detail || '');
+      },
+      onRaceConfig: (targetLaps) => {
+        setMpTargetLaps(targetLaps);
+        mpTargetLapsRef.current = targetLaps;
+      },
+      onRaceFinishUpdate: (results) => {
+        setRaceResults(results);
+        if (results.length === 1 && results[0].id === mp.localPlayerId) {
+          soundRef.current?.playDriftChime();
+          try {
+            confetti({ particleCount: 95, spread: 75, origin: { y: 0.62 } });
+          } catch {}
+        }
+      },
+      onRaceRestart: (targetLaps) => {
+        handleResetRaceState(targetLaps);
       }
     });
 
@@ -384,8 +444,13 @@ export const GameView: React.FC<GameViewProps> = ({
     mpManagerRef.current?.destroy();
     mpManagerRef.current = null;
     setIsMpConnected(false);
+    setIsMpHost(true);
     setMpStatus('waiting');
     setMpStatusMsg('');
+    setRaceResults([]);
+    localRaceFinishedRef.current = false;
+    setLocalRaceFinished(false);
+    setDismissedPodium(false);
     setOpponents([]);
     engineRef.current?.syncOpponents([]);
   };
@@ -396,7 +461,7 @@ export const GameView: React.FC<GameViewProps> = ({
       window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const host = isLocal && lanIp && lanIp !== 'localhost' ? lanIp : window.location.hostname;
     const port = window.location.port ? `:${window.location.port}` : '';
-    const inviteUrl = `${window.location.protocol}//${host}${port}/?mode=desktop&mp=${cleanCode}`;
+    const inviteUrl = `${window.location.protocol}//${host}${port}/?mp=${cleanCode}`;
     navigator.clipboard?.writeText(inviteUrl).catch(() => {});
     setCopiedMpInvite(true);
     setTimeout(() => setCopiedMpInvite(false), 2000);
@@ -590,6 +655,17 @@ export const GameView: React.FC<GameViewProps> = ({
         });
       }
 
+      // Detect Race Finish Line Victory in Multiplayer (when lap exceeds targetLaps!)
+      if (
+        mpManagerRef.current &&
+        !localRaceFinishedRef.current &&
+        (currentTelemetry.lap || 1) > mpTargetLapsRef.current
+      ) {
+        localRaceFinishedRef.current = true;
+        setLocalRaceFinished(true);
+        mpManagerRef.current.reportLocalFinish(currentTelemetry.raceTimeMs || currentTelemetry.lapTimeMs || 1000);
+      }
+
       mpBroadcastTimer += delta;
       if (mpBroadcastTimer >= 0.05 && mpManagerRef.current) {
         mpBroadcastTimer = 0;
@@ -600,7 +676,9 @@ export const GameView: React.FC<GameViewProps> = ({
           rotation: [quat.x, quat.y, quat.z, quat.w],
           speedKmh: currentTelemetry.speedKmh,
           isDrifting: currentTelemetry.isDrifting,
-          isNitro: currentInput.nitro
+          isNitro: currentInput.nitro,
+          lap: currentTelemetry.lap || 1,
+          trackProgress: currentTelemetry.trackProgress || 0
         });
       }
     };
@@ -848,81 +926,222 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       )}
 
-      {/* Live Multiplayer Race Hub */}
-      {isMpConnected && (
-        <div className="absolute top-14 right-4 z-40 hud-glass-pod p-3 rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl pointer-events-auto min-w-[252px]">
-          <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-wider mb-1.5 border-b border-white/10 pb-1.5">
-            <span className="flex items-center gap-1.5 text-purple-300">
-              <Globe className={`w-3.5 h-3.5 ${mpStatus === 'error' ? 'text-rose-400' : 'text-purple-400'}`} />
-              <span>ROOM: {mpRoomCode}</span>
-            </span>
-            <div className="flex items-center space-x-1.5">
-              <button
-                onClick={copyMultiplayerInvite}
-                className="text-[10px] text-cyan-300 hover:text-cyan-200 font-mono px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30"
-                title="Copy multiplayer invite URL"
-              >
-                {copiedMpInvite ? 'COPIED' : 'INVITE'}
-              </button>
-              <button
-                onClick={leaveMultiplayer}
-                className="text-[10px] text-rose-400 hover:text-rose-300 font-mono px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/30"
-              >
-                LEAVE
-              </button>
-            </div>
-          </div>
+      {/* Live Multiplayer Race Hub (Rankings, Lap Target & Status) */}
+      {isMpConnected && (() => {
+        const localId = mpManagerRef.current?.localPlayerId || 'local';
+        const localProgressScore = localRaceFinished
+          ? 999 - (raceResults.find((r) => r.id === localId)?.rank || 1)
+          : (telemetry.lap || 1) - 1 + (telemetry.trackProgress || 0);
 
-          {mpStatusMsg && (
-            <div
-              className={`text-[10px] font-mono mb-1.5 px-1.5 py-0.5 rounded ${
-                mpStatus === 'error'
-                  ? 'bg-rose-500/20 text-rose-300'
-                  : mpStatus === 'connected'
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : 'bg-white/5 text-gray-300'
-              }`}
-            >
-              {mpStatusMsg}
-            </div>
-          )}
+        const racers = [
+          {
+            id: localId,
+            label: `YOU (${selectedCar.name})`,
+            color: '#22d3ee',
+            speedKmh: telemetry.speedKmh,
+            lap: telemetry.lap || 1,
+            progressPct: Math.min(100, Math.round((telemetry.trackProgress || 0) * 100)),
+            score: localProgressScore,
+            isLocal: true,
+            finishRank: raceResults.find((r) => r.id === localId)?.rank || null
+          },
+          ...opponents.map((opp) => ({
+            id: opp.id,
+            label: opp.username,
+            color: opp.color || '#a855f7',
+            speedKmh: opp.speedKmh,
+            lap: opp.lap || 1,
+            progressPct: Math.min(100, Math.round((opp.trackProgress || 0) * 100)),
+            score:
+              opp.finishedAtMs != null
+                ? 999 - (raceResults.find((r) => r.id === opp.id)?.rank || 2)
+                : (opp.lap || 1) - 1 + (opp.trackProgress || 0),
+            isLocal: false,
+            finishRank: raceResults.find((r) => r.id === opp.id)?.rank || null
+          }))
+        ].sort((a, b) => b.score - a.score);
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-cyan-500/15 border border-cyan-500/30">
-              <span className="font-bold text-cyan-300 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                YOU ({selectedCar.name})
-              </span>
-              <span className="font-mono text-cyan-200">{telemetry.speedKmh} KM/H</span>
-            </div>
+        const winner = raceResults[0];
 
-            {opponents.length === 0 ? (
-              <div className="text-[11px] text-gray-400 italic py-1 px-2 text-center font-mono">
-                Waiting for racers to join...
+        return (
+          <>
+            {/* Opponent Won Banner while local player still finishing */}
+            {winner && !localRaceFinished && (
+              <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 hud-glass-capsule px-5 py-2 rounded-2xl border border-amber-400/60 bg-black/80 text-white font-racing flex items-center space-x-2.5 shadow-[0_0_25px_rgba(251,191,36,0.45)] animate-pulse pointer-events-none">
+                <Trophy className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-display font-black uppercase tracking-wider text-amber-300">
+                  {winner.username} WON IN {(winner.finishTimeMs / 1000).toFixed(2)}S! FINISH YOUR LAP!
+                </span>
               </div>
-            ) : (
-              opponents.map((opp) => (
+            )}
+
+            <div className="absolute top-14 right-4 z-40 hud-glass-pod p-3 rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl pointer-events-auto min-w-[260px]">
+              <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-wider mb-1.5 border-b border-white/10 pb-1.5">
+                <span className="flex items-center gap-1.5 text-purple-300">
+                  <Globe className={`w-3.5 h-3.5 ${mpStatus === 'error' ? 'text-rose-400' : 'text-purple-400'}`} />
+                  <span>{mpRoomCode} • {mpTargetLaps}L</span>
+                </span>
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={copyMultiplayerInvite}
+                    className="text-[10px] text-cyan-300 hover:text-cyan-200 font-mono px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30"
+                    title="Copy multiplayer invite URL"
+                  >
+                    {copiedMpInvite ? 'COPIED' : 'INVITE'}
+                  </button>
+                  <button
+                    onClick={leaveMultiplayer}
+                    className="text-[10px] text-rose-400 hover:text-rose-300 font-mono px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/30"
+                  >
+                    LEAVE
+                  </button>
+                </div>
+              </div>
+
+              {mpStatusMsg && (
                 <div
-                  key={opp.id}
-                  className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white/5 border border-white/10"
+                  className={`text-[10px] font-mono mb-1.5 px-1.5 py-0.5 rounded ${
+                    mpStatus === 'error'
+                      ? 'bg-rose-500/20 text-rose-300'
+                      : mpStatus === 'connected'
+                      ? 'bg-emerald-500/15 text-emerald-300'
+                      : 'bg-white/5 text-gray-300'
+                  }`}
                 >
-                  <span
-                    className="font-bold flex items-center gap-1.5"
-                    style={{ color: opp.color || '#a855f7' }}
+                  {mpStatusMsg}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                {racers.map((r, idx) => (
+                  <div
+                    key={r.id}
+                    className={`flex items-center justify-between text-xs py-1 px-2 rounded-lg border ${
+                      r.isLocal
+                        ? 'bg-cyan-500/15 border-cyan-500/35'
+                        : 'bg-white/5 border-white/10'
+                    }`}
                   >
                     <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: opp.color || '#a855f7' }}
-                    />
-                    {opp.username}
-                  </span>
-                  <span className="font-mono text-gray-300">{opp.speedKmh} KM/H</span>
-                </div>
-              ))
-            )}
+                      className="font-bold flex items-center gap-1.5 truncate max-w-[155px]"
+                      style={{ color: r.color }}
+                    >
+                      <span className="text-[10px] font-mono px-1 rounded bg-black/50 text-amber-300">
+                        #{r.finishRank || idx + 1}
+                      </span>
+                      {r.label}
+                    </span>
+                    <span className="font-mono text-[11px] text-gray-200">
+                      {r.finishRank ? 'FIN' : `${r.speedKmh} KM/H`}
+                    </span>
+                  </div>
+                ))}
+
+                {opponents.length === 0 && (
+                  <div className="text-[10px] text-gray-400 italic pt-0.5 px-1 text-center font-mono">
+                    Share INVITE link — waiting for friends...
+                  </div>
+                )}
+
+                {isMpHost && opponents.length > 0 && (
+                  <button
+                    onClick={() => mpManagerRef.current?.requestRaceRestart(mpTargetLaps)}
+                    className="w-full mt-1.5 py-1.5 bg-gradient-to-r from-amber-500/25 to-cyan-500/25 hover:from-amber-500/40 hover:to-cyan-500/40 border border-amber-400/50 text-amber-200 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider flex items-center justify-center gap-1"
+                    title="Reset all racers to start grid for a synchronized race start"
+                  >
+                    <Flag className="w-3 h-3" />
+                    <span>SYNC START RACE (ALL)</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* MULTIPLAYER RACE VICTORY / FINISH PODIUM OVERLAY */}
+      {isMpConnected && localRaceFinished && !dismissedPodium && (() => {
+        const localId = mpManagerRef.current?.localPlayerId || 'local';
+        const myEntry = raceResults.find((r) => r.id === localId);
+        const myRank = myEntry?.rank || 1;
+        const winnerTime = raceResults[0]?.finishTimeMs || myEntry?.finishTimeMs || 0;
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Race Finish Results"
+            className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          >
+            <div className="glass-panel p-6 rounded-2xl border border-amber-400/50 max-w-md w-full text-white font-racing relative shadow-[0_0_50px_rgba(251,191,36,0.25)] text-center">
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-gradient-to-br from-amber-400/30 to-cyan-500/30 border border-amber-400/50">
+                {myRank === 1 ? (
+                  <Trophy className="w-9 h-9 text-amber-300 animate-bounce" />
+                ) : (
+                  <Flag className="w-9 h-9 text-cyan-300" />
+                )}
+              </div>
+
+              <h3 className="text-3xl font-display font-black uppercase tracking-wider text-white">
+                {myRank === 1 ? '1ST PLACE • YOU WIN!' : `${myRank}${myRank === 2 ? 'ND' : myRank === 3 ? 'RD' : 'TH'} PLACE • FINISHED!`}
+              </h3>
+              <p className="text-xs font-mono text-gray-300 mt-1 mb-4">
+                ROOM {mpRoomCode} • {mpTargetLaps} LAP{mpTargetLaps > 1 ? 'S' : ''} • TIME {(myEntry ? myEntry.finishTimeMs / 1000 : 0).toFixed(2)}S
+              </p>
+
+              <div className="space-y-2 mb-5 text-left">
+                {raceResults.map((entry) => {
+                  const isMe = entry.id === localId;
+                  const gapSec = ((entry.finishTimeMs - winnerTime) / 1000).toFixed(2);
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl border ${
+                        isMe
+                          ? 'bg-cyan-500/20 border-cyan-400/60'
+                          : 'bg-black/45 border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <span className={`font-display font-black text-base ${entry.rank === 1 ? 'text-amber-300' : 'text-gray-300'}`}>
+                          #{entry.rank}
+                        </span>
+                        <span className="text-sm font-bold" style={{ color: isMe ? '#67e8f9' : entry.color }}>
+                          {isMe ? `${mpUsername} (YOU)` : entry.username}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-gray-200">
+                        {entry.rank === 1 ? `${(entry.finishTimeMs / 1000).toFixed(2)}s` : `+${gapSec}s`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setDismissedPodium(true)}
+                  className="py-2.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-xs font-bold uppercase tracking-wider"
+                >
+                  Continue Driving
+                </button>
+                <button
+                  onClick={() => {
+                    if (isMpHost) {
+                      mpManagerRef.current?.requestRaceRestart(mpTargetLaps);
+                    } else {
+                      handleResetRaceState(mpTargetLaps);
+                    }
+                  }}
+                  className="py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-xl text-xs font-bold uppercase tracking-wider"
+                >
+                  {isMpHost ? 'New Race (All)' : 'Reset Grid'}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* PAUSE & LIVE TUNING MENU MODAL */}
       {isPauseOpen && (
@@ -1220,6 +1439,28 @@ export const GameView: React.FC<GameViewProps> = ({
                   onChange={(e) => setMpRoomCode(e.target.value.toUpperCase())}
                   className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2.5 text-lg font-display font-bold text-cyan-300 tracking-widest text-center focus:outline-none focus:border-cyan-400 uppercase"
                 />
+              </div>
+
+              <div>
+                <span className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
+                  Race Laps (When Hosting)
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map((laps) => (
+                    <button
+                      key={laps}
+                      type="button"
+                      onClick={() => setMpTargetLaps(laps)}
+                      className={`py-1.5 rounded-xl text-xs font-bold font-mono uppercase border transition-all ${
+                        mpTargetLaps === laps
+                          ? 'bg-purple-500 text-white border-purple-300 shadow-lg'
+                          : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {laps} Lap{laps > 1 ? 's' : ''}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-2">

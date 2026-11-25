@@ -1,16 +1,29 @@
 import Peer, { DataConnection } from 'peerjs';
-import { RemotePlayerState } from '../types';
+import { RemotePlayerState, RaceFinishEntry } from '../types';
 import { openLocalRelaySocket, LocalRelayHandle } from '../utils/wsRelay';
 
 const MP_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:global.stun.twilio.com:3478' }
 ];
 
 export type MultiplayerStatus = 'connecting' | 'waiting' | 'connected' | 'error';
+
+/**
+ * Deterministic side-by-side starting grid positions across the 18.4m wide 4-lane highway
+ * so players never spawn stacked on top of the exact same coordinate.
+ */
+export function getMultiplayerGridSlot(slotIndex: number): [number, number, number] {
+  const laneOffsets = [-2.8, 2.8, -5.8, 5.8];
+  const row = Math.floor(Math.max(0, slotIndex) / 4);
+  const laneX = laneOffsets[Math.max(0, slotIndex) % 4];
+  const posZ = 10 - row * 7.5;
+  return [laneX, 0.64, posZ];
+}
 
 export interface MultiplayerCallbacks {
   onPlayerJoined: (player: RemotePlayerState) => void;
@@ -18,6 +31,9 @@ export interface MultiplayerCallbacks {
   onPlayerUpdate: (player: RemotePlayerState) => void;
   onRoomReady: () => void;
   onStatusChange?: (status: MultiplayerStatus, detail?: string) => void;
+  onRaceConfig?: (targetLaps: number, raceEpoch: number) => void;
+  onRaceFinishUpdate?: (results: RaceFinishEntry[]) => void;
+  onRaceRestart?: (targetLaps: number, raceEpoch: number) => void;
 }
 
 export class MultiplayerRoomManager {
@@ -27,6 +43,10 @@ export class MultiplayerRoomManager {
   public carId: string;
   public color: string;
   public isHost: boolean = false;
+  public targetLaps: number = 1;
+  public raceEpoch: number = 1;
+  public raceResults: RaceFinishEntry[] = [];
+  public localFinishedAtMs: number | null = null;
   public remotePlayers: Map<string, RemotePlayerState> = new Map();
 
   private peer: Peer | null = null;
@@ -45,12 +65,14 @@ export class MultiplayerRoomManager {
     roomCode: string,
     username: string = 'Racer_' + Math.floor(Math.random() * 900 + 100),
     carId: string = 'raptor',
-    color: string = '#00f2fe'
+    color: string = '#00f2fe',
+    targetLaps: number = 1
   ) {
     this.roomCode = roomCode.toUpperCase().trim() || 'APEX99';
     this.username = username;
     this.carId = carId;
     this.color = color;
+    this.targetLaps = Math.max(1, Math.min(5, targetLaps));
     this.localPlayerId = `player-${Math.random().toString(36).slice(2, 7)}-${Math.floor(Math.random() * 900 + 100)}`;
   }
 
@@ -59,7 +81,7 @@ export class MultiplayerRoomManager {
     this.callbacks = callbacks;
     this.callbacks?.onStatusChange?.('connecting', isHost ? 'Starting room...' : `Joining ${this.roomCode}...`);
 
-    // 1. Local LAN / Multi-Tab WebSocket Relay (instant 2ms LAN sync!)
+    // 1. Local LAN / Multi-Tab WebSocket Relay (2ms in local Vite dev; silently skipped on Vercel static deploy)
     this.relay = openLocalRelaySocket({
       channel: 'mp',
       room: this.roomCode,
@@ -78,14 +100,17 @@ export class MultiplayerRoomManager {
       }
     });
 
-    // 2. PeerJS WebRTC Mesh/Relay (works across the internet too!)
+    // 2. Global PeerJS WebRTC Mesh/Relay (runs online across Vercel networks worldwide!)
     const peerId = this.isHost
       ? `apex-mp-host-${this.roomCode}`
       : `apex-mp-peer-${this.roomCode}-${this.localPlayerId}`;
 
     this.peer = new Peer(peerId, {
       debug: 1,
-      config: { iceServers: MP_ICE_SERVERS }
+      config: {
+        iceServers: MP_ICE_SERVERS,
+        iceCandidatePoolSize: 8
+      }
     });
 
     this.peer.on('open', (id) => {
@@ -134,15 +159,15 @@ export class MultiplayerRoomManager {
         return;
       }
       if (this.remotePlayers.size === 0 && !this.relayConnected) {
-        this.callbacks?.onStatusChange?.('waiting', 'Connecting via P2P / LAN...');
+        this.callbacks?.onStatusChange?.('waiting', 'Connecting online via P2P...');
       }
     });
 
-    // Periodic zombie cleanup & handshake keep-alive until racers sync cleanly
+    // Periodic zombie cleanup & presence announce until racers sync cleanly
     this.heartbeatInterval = window.setInterval(() => {
       const now = Date.now();
       this.lastSeenMap.forEach((ts, playerId) => {
-        if (now - ts > 10000) {
+        if (now - ts > 12000) {
           this.lastSeenMap.delete(playerId);
           this.remotePlayers.delete(playerId);
           this.callbacks?.onPlayerLeft(playerId);
@@ -150,7 +175,6 @@ export class MultiplayerRoomManager {
         }
       });
 
-      // Re-announce presence if alone on LAN relay so late joiners catch immediately
       if (this.relayConnected && this.remotePlayers.size === 0) {
         this.sendRelayHandshake(false);
       }
@@ -162,10 +186,13 @@ export class MultiplayerRoomManager {
     if (this.remotePlayers.size > 0) {
       this.callbacks?.onStatusChange?.(
         'connected',
-        `${this.remotePlayers.size + 1} racers synced`
+        `${this.remotePlayers.size + 1} racers online`
       );
     } else if (this.isHost && (this.relayConnected || this.peer?.open)) {
-      this.callbacks?.onStatusChange?.('waiting', `Room ${this.roomCode} ready — waiting for racers`);
+      this.callbacks?.onStatusChange?.(
+        'waiting',
+        `Room ${this.roomCode} (${this.targetLaps} Lap${this.targetLaps > 1 ? 's' : ''}) — waiting for friends`
+      );
     } else if (!this.isHost && (this.p2pOpenCount > 0 || this.relayConnected)) {
       this.callbacks?.onStatusChange?.('waiting', `Joined ${this.roomCode} — syncing racers`);
     }
@@ -176,10 +203,15 @@ export class MultiplayerRoomManager {
     const hostPeerId = `apex-mp-host-${this.roomCode}`;
     const existing = this.connections.get(hostPeerId);
     if (existing?.open) return;
+    if (existing) {
+      try {
+        existing.close();
+      } catch {}
+      this.connections.delete(hostPeerId);
+    }
 
     try {
-      // Reliable channel guarantees HANDSHAKE, ROSTER & PLAYER_LEFT never drop silently!
-      const conn = this.peer.connect(hostPeerId, { reliable: true });
+      const conn = this.peer.connect(hostPeerId, { reliable: true, serialization: 'json' });
       this.setupConnection(conn);
     } catch {
       this.scheduleJoinRetry();
@@ -193,7 +225,7 @@ export class MultiplayerRoomManager {
       if (!this.isDestroyed && this.p2pOpenCount === 0) {
         this.connectToPeerHost();
       }
-    }, 2400);
+    }, 2200);
   }
 
   private buildHandshakePayload() {
@@ -201,8 +233,23 @@ export class MultiplayerRoomManager {
       id: this.localPlayerId,
       username: this.username,
       carId: this.carId,
-      color: this.color
+      color: this.color,
+      targetLaps: this.isHost ? this.targetLaps : undefined,
+      raceEpoch: this.isHost ? this.raceEpoch : undefined,
+      raceResults: this.isHost ? this.raceResults : undefined,
+      finishedAtMs: this.localFinishedAtMs
     };
+  }
+
+  private sendAll(msg: any) {
+    if (this.relay?.isOpen()) {
+      this.relay.send(msg);
+    }
+    this.connections.forEach((c) => {
+      if (c.open) {
+        c.send(msg);
+      }
+    });
   }
 
   private sendRelayHandshake(isReply: boolean) {
@@ -222,11 +269,74 @@ export class MultiplayerRoomManager {
     }
   }
 
+  private recordFinishEntry(entry: Omit<RaceFinishEntry, 'rank'>, epoch?: number) {
+    if (typeof epoch === 'number' && epoch !== this.raceEpoch) return false;
+
+    const alreadyIdx = this.raceResults.findIndex((r) => r.id === entry.id);
+    if (alreadyIdx >= 0) return false;
+
+    const merged = [...this.raceResults, { ...entry, rank: 0 }];
+    merged.sort((a, b) => a.finishTimeMs - b.finishTimeMs);
+    this.raceResults = merged.map((r, idx) => ({ ...r, rank: idx + 1 }));
+    this.callbacks?.onRaceFinishUpdate?.([...this.raceResults]);
+    return true;
+  }
+
+  public reportLocalFinish(finishTimeMs: number) {
+    if (this.localFinishedAtMs !== null) return;
+    const rounded = Math.max(100, Math.round(finishTimeMs));
+    this.localFinishedAtMs = rounded;
+
+    const finishEntry = {
+      id: this.localPlayerId,
+      username: this.username,
+      carId: this.carId,
+      color: this.color,
+      finishTimeMs: rounded
+    };
+
+    this.recordFinishEntry(finishEntry, this.raceEpoch);
+
+    const msg = {
+      type: 'PLAYER_FINISHED',
+      payload: { ...finishEntry, raceEpoch: this.raceEpoch }
+    };
+    this.sendAll(msg);
+
+    if (this.isHost) {
+      this.sendAll({
+        type: 'RACE_RESULTS',
+        payload: { raceEpoch: this.raceEpoch, results: this.raceResults }
+      });
+    }
+  }
+
+  public requestRaceRestart(newTargetLaps?: number) {
+    if (typeof newTargetLaps === 'number') {
+      this.targetLaps = Math.max(1, Math.min(5, newTargetLaps));
+    }
+    this.raceEpoch += 1;
+    this.raceResults = [];
+    this.localFinishedAtMs = null;
+
+    this.remotePlayers.forEach((p, id) => {
+      this.remotePlayers.set(id, { ...p, lap: 1, trackProgress: 0, finishedAtMs: null });
+    });
+
+    const msg = {
+      type: 'RACE_RESTART',
+      payload: { targetLaps: this.targetLaps, raceEpoch: this.raceEpoch }
+    };
+    this.sendAll(msg);
+    this.callbacks?.onRaceFinishUpdate?.([]);
+    this.callbacks?.onRaceRestart?.(this.targetLaps, this.raceEpoch);
+    this.emitStatus();
+  }
+
   private handleMessage(data: any, sourceConn?: DataConnection) {
     if (!data || !data.type) return;
 
     if (data.type === 'RELAY_PEER_JOINED') {
-      // Someone new entered our LAN room — immediately introduce ourselves!
       this.sendRelayHandshake(false);
       return;
     }
@@ -249,6 +359,18 @@ export class MultiplayerRoomManager {
         this.peerToPlayerId.set(sourceConn.peer, p.id);
       }
 
+      // Sync targetLaps & epoch from Host cleanly when joining
+      if (!this.isHost && typeof p.targetLaps === 'number') {
+        this.targetLaps = p.targetLaps;
+        if (typeof p.raceEpoch === 'number') {
+          this.raceEpoch = Math.max(this.raceEpoch, p.raceEpoch);
+        }
+        this.callbacks?.onRaceConfig?.(this.targetLaps, this.raceEpoch);
+        if (Array.isArray(p.raceResults) && p.raceResults.length > 0) {
+          p.raceResults.forEach((r: RaceFinishEntry) => this.recordFinishEntry(r, this.raceEpoch));
+        }
+      }
+
       const existing = this.remotePlayers.get(p.id);
       const playerState: RemotePlayerState = {
         id: p.id,
@@ -260,7 +382,10 @@ export class MultiplayerRoomManager {
         speedKmh: existing?.speedKmh ?? p.speedKmh ?? 0,
         isDrifting: existing?.isDrifting ?? false,
         isNitro: existing?.isNitro ?? false,
-        ping: existing?.ping ?? 12
+        ping: existing?.ping ?? 18,
+        lap: existing?.lap ?? 1,
+        trackProgress: existing?.trackProgress ?? 0,
+        finishedAtMs: p.finishedAtMs ?? existing?.finishedAtMs ?? null
       };
 
       const isNew = !this.remotePlayers.has(p.id);
@@ -276,6 +401,12 @@ export class MultiplayerRoomManager {
             const roster = Array.from(this.remotePlayers.values()).filter((pl) => pl.id !== p.id);
             if (roster.length > 0) {
               sourceConn.send({ type: 'ROSTER', payload: roster });
+            }
+            if (this.raceResults.length > 0) {
+              sourceConn.send({
+                type: 'RACE_RESULTS',
+                payload: { raceEpoch: this.raceEpoch, results: this.raceResults }
+              });
             }
             this.connections.forEach((c, peerId) => {
               if (peerId !== sourceConn.peer && c.open) {
@@ -295,6 +426,58 @@ export class MultiplayerRoomManager {
         this.callbacks?.onPlayerJoined(player);
       });
       this.emitStatus();
+    } else if (data.type === 'PLAYER_FINISHED' && data.payload) {
+      const f = data.payload;
+      if (!f || !f.id) return;
+      const changed = this.recordFinishEntry(
+        {
+          id: f.id,
+          username: f.username || 'Racer',
+          carId: f.carId || 'raptor',
+          color: f.color || '#a855f7',
+          finishTimeMs: Number(f.finishTimeMs) || 1000
+        },
+        f.raceEpoch
+      );
+      if (this.isHost && changed) {
+        const canonical = {
+          type: 'RACE_RESULTS',
+          payload: { raceEpoch: this.raceEpoch, results: this.raceResults }
+        };
+        this.connections.forEach((c) => {
+          if (c.open) c.send(canonical);
+        });
+        if (this.relay?.isOpen()) {
+          this.relay.send(canonical);
+        }
+      }
+    } else if (data.type === 'RACE_RESULTS' && data.payload?.results) {
+      if (typeof data.payload.raceEpoch === 'number' && data.payload.raceEpoch !== this.raceEpoch) return;
+      (data.payload.results as RaceFinishEntry[]).forEach((r) =>
+        this.recordFinishEntry(r, this.raceEpoch)
+      );
+    } else if (data.type === 'RACE_RESTART' && data.payload) {
+      const nextEpoch = Number(data.payload.raceEpoch) || this.raceEpoch + 1;
+      if (nextEpoch <= this.raceEpoch) return;
+      this.raceEpoch = nextEpoch;
+      if (typeof data.payload.targetLaps === 'number') {
+        this.targetLaps = data.payload.targetLaps;
+      }
+      this.raceResults = [];
+      this.localFinishedAtMs = null;
+      this.remotePlayers.forEach((p, id) => {
+        this.remotePlayers.set(id, { ...p, lap: 1, trackProgress: 0, finishedAtMs: null });
+      });
+      this.callbacks?.onRaceFinishUpdate?.([]);
+      this.callbacks?.onRaceRestart?.(this.targetLaps, this.raceEpoch);
+      this.emitStatus();
+      if (sourceConn && this.isHost) {
+        this.connections.forEach((c, peerId) => {
+          if (peerId !== sourceConn.peer && c.open) {
+            c.send(data);
+          }
+        });
+      }
     } else if (data.type === 'STATE_UPDATE' && data.payload) {
       const update = data.payload as RemotePlayerState;
       if (!update.id || update.id === this.localPlayerId) return;
@@ -302,6 +485,20 @@ export class MultiplayerRoomManager {
       const isNew = !this.remotePlayers.has(update.id);
       this.remotePlayers.set(update.id, update);
       this.lastSeenMap.set(update.id, Date.now());
+
+      // Backup trigger: if a peer finished before finish packet arrived, record immediately!
+      if (typeof update.finishedAtMs === 'number' && update.finishedAtMs > 0) {
+        this.recordFinishEntry(
+          {
+            id: update.id,
+            username: update.username || 'Racer',
+            carId: update.carId || 'raptor',
+            color: update.color || '#a855f7',
+            finishTimeMs: update.finishedAtMs
+          },
+          this.raceEpoch
+        );
+      }
 
       if (isNew) {
         this.callbacks?.onPlayerJoined(update);
@@ -328,15 +525,38 @@ export class MultiplayerRoomManager {
   }
 
   private setupConnection(conn: DataConnection) {
+    const prev = this.connections.get(conn.peer);
+    if (prev && prev !== conn) {
+      try {
+        prev.close();
+      } catch {}
+    }
     this.connections.set(conn.peer, conn);
 
+    // Watchdog prevents silent WebRTC DataChannel stalls when joining across NAT/timing races
+    const openWatchdog = window.setTimeout(() => {
+      if (!conn.open && this.connections.get(conn.peer) === conn && !this.isDestroyed) {
+        console.warn('[Multiplayer] Stalled DataConnection reset for:', conn.peer);
+        try {
+          conn.close();
+        } catch {}
+        this.connections.delete(conn.peer);
+        if (!this.isHost) {
+          this.scheduleJoinRetry();
+        }
+      }
+    }, 4500);
+
     if (conn.open) {
+      clearTimeout(openWatchdog);
       this.p2pOpenCount++;
       this.sendHandshake(conn);
       this.emitStatus();
     }
 
     conn.on('open', () => {
+      clearTimeout(openWatchdog);
+      if (this.connections.get(conn.peer) !== conn) return;
       console.log('[Multiplayer] DataConnection open with:', conn.peer);
       this.p2pOpenCount++;
       this.sendHandshake(conn);
@@ -348,9 +568,9 @@ export class MultiplayerRoomManager {
     });
 
     const handleClose = () => {
-      if (this.connections.get(conn.peer) === conn) {
-        this.connections.delete(conn.peer);
-      }
+      clearTimeout(openWatchdog);
+      if (this.connections.get(conn.peer) !== conn) return;
+      this.connections.delete(conn.peer);
       this.p2pOpenCount = Math.max(0, this.p2pOpenCount - 1);
 
       const mappedPlayerId = this.peerToPlayerId.get(conn.peer);
@@ -399,13 +619,15 @@ export class MultiplayerRoomManager {
     this.connections.forEach((c) => this.sendHandshake(c, false));
   }
 
-  // Broadcast local car position to all opponents (20 Hz snapshot)
+  // Broadcast local car position + race progress to all opponents (20 Hz snapshot)
   public broadcastLocalState(state: {
     position: [number, number, number];
     rotation: [number, number, number, number];
     speedKmh: number;
     isDrifting: boolean;
     isNitro: boolean;
+    lap: number;
+    trackProgress: number;
   }) {
     const packet: RemotePlayerState = {
       id: this.localPlayerId,
@@ -417,20 +639,13 @@ export class MultiplayerRoomManager {
       speedKmh: state.speedKmh,
       isDrifting: state.isDrifting,
       isNitro: state.isNitro,
-      ping: this.relayConnected ? 2 : 18
+      ping: this.relayConnected ? 2 : 18,
+      lap: state.lap,
+      trackProgress: state.trackProgress,
+      finishedAtMs: this.localFinishedAtMs
     };
 
-    const msg = { type: 'STATE_UPDATE', payload: packet };
-
-    if (this.relay?.isOpen()) {
-      this.relay.send(msg);
-    }
-
-    this.connections.forEach((conn) => {
-      if (conn.open) {
-        conn.send(msg);
-      }
-    });
+    this.sendAll({ type: 'STATE_UPDATE', payload: packet });
   }
 
   public getOpponentsList(): RemotePlayerState[] {

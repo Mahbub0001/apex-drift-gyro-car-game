@@ -132,6 +132,7 @@ export class GameEngine {
 
   // Remote Multiplayer Opponents
   private opponentCars: Map<string, OpponentCarEntity> = new Map();
+  public multiplayerSpawnPos: THREE.Vector3 | null = null;
 
   private canvas: HTMLCanvasElement;
   public cameraMode: 'chase' | 'hood' = 'chase';
@@ -285,7 +286,8 @@ export class GameEngine {
   }
 
   public resetCar() {
-    this.vehiclePhysics.resetPosition();
+    const targetSpawn = this.multiplayerSpawnPos ? this.multiplayerSpawnPos.clone() : new THREE.Vector3(0, 0.64, 10);
+    this.vehiclePhysics.resetPosition(targetSpawn);
     this.lastSkidPos.copy(this.vehiclePhysics.position);
   }
 
@@ -629,8 +631,8 @@ export class GameEngine {
       }
     }
 
-    // 8. Remote Multiplayer Opponents Interpolation
-    this.opponentCars.forEach((opp) => {
+    // 8. Remote Multiplayer Opponents Interpolation + Anti-Overlap Car Separation
+    this.opponentCars.forEach((opp, oppId) => {
       opp.meshes.root.position.lerp(opp.targetPos, Math.min(1, delta * 15));
       opp.meshes.root.quaternion.slerp(opp.targetQuat, Math.min(1, delta * 15));
 
@@ -638,6 +640,25 @@ export class GameEngine {
       opp.meshes.wheels.forEach((w) => {
         w.rotation.x += spin;
       });
+
+      // Keep multiplayer cars cleanly separated side-by-side (never overlap at the same road spot)
+      const dx = this.vehiclePhysics.position.x - opp.meshes.root.position.x;
+      const dz = this.vehiclePhysics.position.z - opp.meshes.root.position.z;
+      const absX = Math.abs(dx);
+      const absZ = Math.abs(dz);
+      if (absX < 2.4 && absZ < 4.4) {
+        const tieSign = oppId < 'm' ? 1 : -1;
+        const pushSign = absX > 0.05 ? Math.sign(dx) : tieSign;
+        const pushMag = (2.45 - absX) * 0.45;
+        const closest = this.track.getClosestSplinePoint(
+          this.vehiclePhysics.position.x,
+          this.vehiclePhysics.position.z
+        );
+        const candX = this.vehiclePhysics.position.x + pushSign * pushMag;
+        if (Math.hypot(candX - closest.point.x, this.vehiclePhysics.position.z - closest.point.z) < 8.6) {
+          this.vehiclePhysics.position.x = candX;
+        }
+      }
     });
 
     // 9. Sync 3D Player Car Mesh, Wheels, VFX & Smoke

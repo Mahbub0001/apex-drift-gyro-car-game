@@ -43,7 +43,9 @@ export class VehiclePhysics {
   // Lap & Wrong-Way Telemetry
   public lap: number = 1;
   public lapTimeMs: number = 0;
+  public raceTimeMs: number = 0;
   public bestLapTimeMs: number | null = null;
+  public trackProgress: number = 0;
   public isWrongWay: boolean = false;
   private prevSplineT: number = 0.001;
   private passedMidpoint: boolean = false;
@@ -198,7 +200,9 @@ export class VehiclePhysics {
         health: Math.max(0, Math.round(this.health)),
         lap: this.lap,
         lapTimeMs: 0,
+        raceTimeMs: 0,
         bestLapTimeMs: this.bestLapTimeMs,
+        trackProgress: this.trackProgress,
         isWrongWay: false,
         shouldShiftUp: false
       };
@@ -212,8 +216,9 @@ export class VehiclePhysics {
       }
     }
 
-    // Advance Lap Stopwatch
+    // Advance Lap & Total Race Stopwatches
     this.lapTimeMs += delta * 1000;
+    this.raceTimeMs += delta * 1000;
 
     // 3. Nitro Management (Scaled per vehicle nitroMultiplier)
     const canFireNitro = input.nitro && this.nitroFuel > 0 && input.throttle > 0.05 && typeof this.gear === 'number';
@@ -450,6 +455,7 @@ export class VehiclePhysics {
     // 9. Track Containment, Guardrail Glance, Lap Counting & Wrong-Way Check
     if (closestPointFunc) {
       const { point, tangent, dist, t } = closestPointFunc(this.position.x, this.position.z);
+      this.trackProgress = t;
 
       if (t > 0.42 && t < 0.62) {
         this.passedMidpoint = true;
@@ -554,6 +560,8 @@ export class VehiclePhysics {
       lap: this.lap,
       lapTimeMs: Math.round(this.lapTimeMs),
       bestLapTimeMs: this.bestLapTimeMs,
+      raceTimeMs: Math.round(this.raceTimeMs),
+      trackProgress: this.trackProgress,
       isWrongWay: this.isWrongWay,
       shouldShiftUp
     };
@@ -603,6 +611,10 @@ export class VehiclePhysics {
     this.nitroFuel = Math.max(0, this.nitroFuel - 20);
   }
 
+  public getHeadingAngle(): number {
+    return this.headingAngle;
+  }
+
   public launchRamp(upwardImpulse: number = 14.0) {
     this.verticalVelocity = upwardImpulse;
     this.isAirborne = true;
@@ -634,5 +646,17 @@ export class VehiclePhysics {
     this.wrongWayTimer = 0;
     this.rotation.set(0, 0, 0, 'YXZ');
     this.quaternion.setFromEuler(this.rotation);
+  }
+
+  public resetRace(spawnPos: THREE.Vector3 = new THREE.Vector3(0, 0.64, 10)) {
+    this.resetPosition(spawnPos);
+    this.lap = 1;
+    this.lapTimeMs = 0;
+    this.raceTimeMs = 0;
+    this.trackProgress = 0;
+    this.prevSplineT = 0.001;
+    this.passedMidpoint = false;
+    this.totalScore = 0;
+    this.lastBankedDrift = 0;
   }
 }

@@ -33,6 +33,8 @@ export interface VehicleTelemetry {
   lap?: number;
   lapTimeMs?: number;
   bestLapTimeMs?: number | null;
+  raceTimeMs?: number;
+  trackProgress?: number; // 0..1 normalized position along track loop
   shouldShiftUp?: boolean; // Manual transmission redline cue (7400+ RPM)
 }
 
@@ -65,6 +67,15 @@ export interface TrafficCarState {
   color: string;
 }
 
+export interface RaceFinishEntry {
+  id: string;
+  username: string;
+  carId: string;
+  color: string;
+  finishTimeMs: number;
+  rank: number;
+}
+
 export interface RemotePlayerState {
   id: string;
   username: string;
@@ -76,6 +87,9 @@ export interface RemotePlayerState {
   isDrifting: boolean;
   isNitro: boolean;
   ping: number;
+  lap?: number;
+  trackProgress?: number;
+  finishedAtMs?: number | null;
 }
 
 export interface SuperCarConfig {

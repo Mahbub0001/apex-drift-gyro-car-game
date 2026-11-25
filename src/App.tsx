@@ -74,6 +74,12 @@ export const App: React.FC = () => {
       const urlParams = new URLSearchParams(window.location.search);
       const roomParam = urlParams.get('room');
       if (roomParam) return roomParam.toUpperCase();
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      if (window.crypto?.getRandomValues) {
+        const bytes = new Uint8Array(6);
+        window.crypto.getRandomValues(bytes);
+        return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+      }
       return Math.random().toString(36).substring(2, 8).toUpperCase();
     }
     return 'APEX99';
@@ -87,6 +93,7 @@ export const App: React.FC = () => {
     return false;
   });
   const hostRef = useRef<WebRTCHost | null>(null);
+  const [sharedHost, setSharedHost] = useState<WebRTCHost | null>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -96,12 +103,13 @@ export const App: React.FC = () => {
     }
   }, [roomId]);
 
-  // Initialize Persistent WebRTC Host ONLY in Desktop Host mode (prevents PeerJS ID collisions on Mobile!)
+  // Initialize Persistent WebRTC Host ONLY in Desktop Host mode (prevents PeerJS ID collisions!)
   useEffect(() => {
     if (mode !== 'desktop') return;
 
     const host = new WebRTCHost(roomId);
     hostRef.current = host;
+    setSharedHost(host);
 
     host.init(
       (_input) => {
@@ -115,6 +123,7 @@ export const App: React.FC = () => {
     return () => {
       host.destroy();
       hostRef.current = null;
+      setSharedHost(null);
     };
   }, [mode, roomId]);
 
@@ -204,7 +213,7 @@ export const App: React.FC = () => {
         setOpenMpOnStart(false);
         setGameState('home');
       }}
-      sharedHost={hostRef.current}
+      sharedHost={sharedHost}
       isInitialPhoneConnected={isPhoneConnected}
       initialOpenMultiplayer={openMpOnStart}
       isMobileMode={false}
