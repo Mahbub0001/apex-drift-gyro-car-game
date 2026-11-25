@@ -31,7 +31,8 @@ export interface MultiplayerCallbacks {
   onPlayerUpdate: (player: RemotePlayerState) => void;
   onRoomReady: () => void;
   onStatusChange?: (status: MultiplayerStatus, detail?: string) => void;
-  onRaceConfig?: (targetLaps: number, raceEpoch: number) => void;
+  onRaceConfig?: (targetLaps: number, raceEpoch: number, hasRaceStarted?: boolean) => void;
+  onRaceStartCountdown?: (durationSec: number, targetLaps: number, raceEpoch: number) => void;
   onRaceFinishUpdate?: (results: RaceFinishEntry[]) => void;
   onRaceRestart?: (targetLaps: number, raceEpoch: number) => void;
 }
@@ -43,6 +44,8 @@ export class MultiplayerRoomManager {
   public carId: string;
   public color: string;
   public isHost: boolean = false;
+  public hostPlayerId: string | null = null;
+  public hasRaceStarted: boolean = false;
   public targetLaps: number = 1;
   public raceEpoch: number = 1;
   public raceResults: RaceFinishEntry[] = [];
@@ -78,6 +81,7 @@ export class MultiplayerRoomManager {
 
   public init(isHost: boolean, callbacks: MultiplayerCallbacks) {
     this.isHost = isHost;
+    if (isHost) this.hostPlayerId = this.localPlayerId;
     this.callbacks = callbacks;
     this.callbacks?.onStatusChange?.('connecting', isHost ? 'Starting room...' : `Joining ${this.roomCode}...`);
 
@@ -228,14 +232,29 @@ export class MultiplayerRoomManager {
     }, 2200);
   }
 
+  public getLocalGridPosition(): [number, number, number] {
+    if (this.isHost) {
+      return getMultiplayerGridSlot(0);
+    }
+    const nonHostIds = [
+      this.localPlayerId,
+      ...Array.from(this.remotePlayers.keys()).filter((id) => id !== this.hostPlayerId)
+    ].sort();
+    const slotIdx = Math.max(1, nonHostIds.indexOf(this.localPlayerId) + 1);
+    return getMultiplayerGridSlot(slotIdx);
+  }
+
   private buildHandshakePayload() {
     return {
       id: this.localPlayerId,
       username: this.username,
       carId: this.carId,
       color: this.color,
+      isHost: this.isHost,
+      position: this.getLocalGridPosition(),
       targetLaps: this.isHost ? this.targetLaps : undefined,
       raceEpoch: this.isHost ? this.raceEpoch : undefined,
+      hasRaceStarted: this.isHost ? this.hasRaceStarted : undefined,
       raceResults: this.isHost ? this.raceResults : undefined,
       finishedAtMs: this.localFinishedAtMs
     };
@@ -311,11 +330,36 @@ export class MultiplayerRoomManager {
     }
   }
 
+  public startRaceWithCountdown(durationSec: number = 10) {
+    this.raceEpoch += 1;
+    this.hasRaceStarted = true;
+    this.raceResults = [];
+    this.localFinishedAtMs = null;
+
+    this.remotePlayers.forEach((p, id) => {
+      this.remotePlayers.set(id, { ...p, lap: 1, trackProgress: 0, finishedAtMs: null });
+    });
+
+    const msg = {
+      type: 'RACE_START_COUNTDOWN',
+      payload: {
+        durationSec,
+        targetLaps: this.targetLaps,
+        raceEpoch: this.raceEpoch
+      }
+    };
+    this.sendAll(msg);
+    this.callbacks?.onRaceFinishUpdate?.([]);
+    this.callbacks?.onRaceStartCountdown?.(durationSec, this.targetLaps, this.raceEpoch);
+    this.emitStatus();
+  }
+
   public requestRaceRestart(newTargetLaps?: number) {
     if (typeof newTargetLaps === 'number') {
       this.targetLaps = Math.max(1, Math.min(5, newTargetLaps));
     }
     this.raceEpoch += 1;
+    this.hasRaceStarted = true;
     this.raceResults = [];
     this.localFinishedAtMs = null;
 
@@ -325,7 +369,7 @@ export class MultiplayerRoomManager {
 
     const msg = {
       type: 'RACE_RESTART',
-      payload: { targetLaps: this.targetLaps, raceEpoch: this.raceEpoch }
+      payload: { targetLaps: this.targetLaps, raceEpoch: this.raceEpoch, durationSec: 10 }
     };
     this.sendAll(msg);
     this.callbacks?.onRaceFinishUpdate?.([]);
@@ -359,13 +403,20 @@ export class MultiplayerRoomManager {
         this.peerToPlayerId.set(sourceConn.peer, p.id);
       }
 
-      // Sync targetLaps & epoch from Host cleanly when joining
+      if (p.isHost) {
+        this.hostPlayerId = p.id;
+      }
+
+      // Sync targetLaps, epoch & started status from Host cleanly when joining
       if (!this.isHost && typeof p.targetLaps === 'number') {
         this.targetLaps = p.targetLaps;
         if (typeof p.raceEpoch === 'number') {
           this.raceEpoch = Math.max(this.raceEpoch, p.raceEpoch);
         }
-        this.callbacks?.onRaceConfig?.(this.targetLaps, this.raceEpoch);
+        if (typeof p.hasRaceStarted === 'boolean') {
+          this.hasRaceStarted = p.hasRaceStarted;
+        }
+        this.callbacks?.onRaceConfig?.(this.targetLaps, this.raceEpoch, this.hasRaceStarted);
         if (Array.isArray(p.raceResults) && p.raceResults.length > 0) {
           p.raceResults.forEach((r: RaceFinishEntry) => this.recordFinishEntry(r, this.raceEpoch));
         }
@@ -456,6 +507,28 @@ export class MultiplayerRoomManager {
       (data.payload.results as RaceFinishEntry[]).forEach((r) =>
         this.recordFinishEntry(r, this.raceEpoch)
       );
+    } else if (data.type === 'RACE_START_COUNTDOWN' && data.payload) {
+      const nextEpoch = Number(data.payload.raceEpoch) || this.raceEpoch + 1;
+      if (nextEpoch <= this.raceEpoch) return;
+      this.raceEpoch = nextEpoch;
+      this.hasRaceStarted = true;
+      if (typeof data.payload.targetLaps === 'number') {
+        this.targetLaps = data.payload.targetLaps;
+      }
+      const durationSec = Number(data.payload.durationSec) || 10;
+      this.raceResults = [];
+      this.localFinishedAtMs = null;
+      this.remotePlayers.forEach((p, id) => {
+        this.remotePlayers.set(id, { ...p, lap: 1, trackProgress: 0, finishedAtMs: null });
+      });
+      this.callbacks?.onRaceFinishUpdate?.([]);
+      this.callbacks?.onRaceStartCountdown?.(durationSec, this.targetLaps, this.raceEpoch);
+      this.emitStatus();
+      if (sourceConn && this.isHost) {
+        this.connections.forEach((c, peerId) => {
+          if (peerId !== sourceConn.peer && c.open) c.send(data);
+        });
+      }
     } else if (data.type === 'RACE_RESTART' && data.payload) {
       const nextEpoch = Number(data.payload.raceEpoch) || this.raceEpoch + 1;
       if (nextEpoch <= this.raceEpoch) return;

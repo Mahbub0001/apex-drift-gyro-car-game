@@ -4,7 +4,11 @@ import { GameEngine } from '../../game/core/Engine';
 import { HUDOverlay } from '../../game/ui/HUDOverlay';
 import { SoundEngine } from '../../game/audio/SoundEngine';
 import { WebRTCHost } from '../../services/webrtc';
-import { MultiplayerRoomManager, MultiplayerStatus } from '../../services/multiplayer';
+import {
+  MultiplayerRoomManager,
+  MultiplayerStatus,
+  getMultiplayerGridSlot
+} from '../../services/multiplayer';
 import {
   ControllerInput,
   VehicleTelemetry,
@@ -70,6 +74,7 @@ export const GameView: React.FC<GameViewProps> = ({
   onSwitchToController
 }) => {
   const isMobile = isMobileMode ?? isMobileDevice();
+  const [isForceRotated90, setIsForceRotated90] = useState<boolean>(false);
 
   const {
     steerNormalized: mobileSteer,
@@ -78,7 +83,12 @@ export const GameView: React.FC<GameViewProps> = ({
     hasSensorSignal,
     requestPermission: requestGyroPermission,
     recalibrate: recalibrateMobileGyro
-  } = useDeviceOrientation(settings.gyroSensitivity);
+  } = useDeviceOrientation(settings.gyroSensitivity, isForceRotated90);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => engineRef.current?.handleResize(), 80);
+    return () => window.clearTimeout(t);
+  }, [isForceRotated90]);
 
   const mobileSteerModeRef = useRef<'gyro' | 'touch'>('gyro');
   const lastGyroPacketTimeRef = useRef<number>(0);
@@ -126,12 +136,18 @@ export const GameView: React.FC<GameViewProps> = ({
   const mpTargetLapsRef = useRef<number>(1);
   const [mpStatus, setMpStatus] = useState<MultiplayerStatus>('waiting');
   const [mpStatusMsg, setMpStatusMsg] = useState<string>('');
+  const [mpRacePhase, setMpRacePhase] = useState<'idle' | 'waiting_start' | 'countdown' | 'racing'>('idle');
+  const mpRacePhaseRef = useRef<'idle' | 'waiting_start' | 'countdown' | 'racing'>('idle');
   const [copiedMpInvite, setCopiedMpInvite] = useState<boolean>(false);
   const [opponents, setOpponents] = useState<RemotePlayerState[]>([]);
   const [raceResults, setRaceResults] = useState<RaceFinishEntry[]>([]);
   const [localRaceFinished, setLocalRaceFinished] = useState<boolean>(false);
   const [dismissedPodium, setDismissedPodium] = useState<boolean>(false);
   const localRaceFinishedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    mpRacePhaseRef.current = mpRacePhase;
+  }, [mpRacePhase]);
 
   useEffect(() => {
     mpTargetLapsRef.current = mpTargetLaps;
@@ -206,36 +222,54 @@ export const GameView: React.FC<GameViewProps> = ({
 
   const countdownTimersRef = useRef<number[]>([]);
 
-  const startGridCountdown = () => {
+  const clearGridCountdown = () => {
     countdownTimersRef.current.forEach((id) => clearTimeout(id));
     countdownTimersRef.current = [];
-    countdownRef.current = 3;
-    setCountdown(3);
+    countdownRef.current = null;
+    setCountdown(null);
+  };
+
+  const startGridCountdown = (seconds: number = 3, onGo?: () => void) => {
+    countdownTimersRef.current.forEach((id) => clearTimeout(id));
+    countdownTimersRef.current = [];
+    const totalSec = Math.max(1, Math.round(seconds));
+    countdownRef.current = totalSec;
+    setCountdown(totalSec);
 
     countdownTimersRef.current.push(
       window.setTimeout(() => {
         soundRef.current?.init();
         soundRef.current?.playCountdownBeep(false);
-      }, 150),
-      window.setTimeout(() => {
-        countdownRef.current = 2;
-        setCountdown(2);
-        soundRef.current?.playCountdownBeep(false);
-      }, 1150),
-      window.setTimeout(() => {
-        countdownRef.current = 1;
-        setCountdown(1);
-        soundRef.current?.playCountdownBeep(false);
-      }, 2150),
+      }, 120)
+    );
+
+    for (let s = totalSec - 1; s >= 1; s--) {
+      const delayMs = (totalSec - s) * 1000;
+      countdownTimersRef.current.push(
+        window.setTimeout(() => {
+          countdownRef.current = s;
+          setCountdown(s);
+          if (s <= 5) {
+            soundRef.current?.init();
+            soundRef.current?.playCountdownBeep(false);
+          }
+        }, delayMs)
+      );
+    }
+
+    const goDelayMs = totalSec * 1000;
+    countdownTimersRef.current.push(
       window.setTimeout(() => {
         countdownRef.current = 'GO!';
         setCountdown('GO!');
+        soundRef.current?.init();
         soundRef.current?.playCountdownBeep(true);
-      }, 3150),
+        onGo?.();
+      }, goDelayMs),
       window.setTimeout(() => {
         countdownRef.current = null;
         setCountdown(null);
-      }, 4200)
+      }, goDelayMs + 1050)
     );
   };
 
@@ -350,7 +384,7 @@ export const GameView: React.FC<GameViewProps> = ({
   }, [roomId, sharedHost, isMobileMode]);
 
   // Multiplayer Room Connection
-  const handleResetRaceState = (nextTargetLaps?: number) => {
+  const handleResetRaceState = (nextTargetLaps?: number, countdownSeconds: number = 10) => {
     if (typeof nextTargetLaps === 'number') {
       setMpTargetLaps(nextTargetLaps);
       mpTargetLapsRef.current = nextTargetLaps;
@@ -359,9 +393,29 @@ export const GameView: React.FC<GameViewProps> = ({
     setLocalRaceFinished(false);
     setDismissedPodium(false);
     setRaceResults([]);
-    const laneX = mpManagerRef.current?.isHost ? -2.2 : 2.2;
-    engineRef.current?.vehiclePhysics.resetRace(new THREE.Vector3(laneX, 0.64, 10));
-    startGridCountdown();
+
+    const slot = mpManagerRef.current
+      ? mpManagerRef.current.getLocalGridPosition()
+      : getMultiplayerGridSlot(0);
+    const slotVec = new THREE.Vector3(slot[0], slot[1], slot[2]);
+    if (engineRef.current) {
+      engineRef.current.multiplayerSpawnPos = slotVec.clone();
+      engineRef.current.vehiclePhysics.resetRace(slotVec);
+    }
+
+    mpRacePhaseRef.current = 'countdown';
+    setMpRacePhase('countdown');
+    startGridCountdown(countdownSeconds, () => {
+      mpRacePhaseRef.current = 'racing';
+      setMpRacePhase('racing');
+    });
+  };
+
+  const handleHostStartRace = () => {
+    if (!mpManagerRef.current || !isMpHost) return;
+    soundRef.current?.init();
+    soundRef.current?.playUiClick();
+    mpManagerRef.current.startRaceWithCountdown(10);
   };
 
   const startMultiplayer = (asHost: boolean) => {
@@ -375,10 +429,18 @@ export const GameView: React.FC<GameViewProps> = ({
     setLocalRaceFinished(false);
     setDismissedPodium(false);
     setRaceResults([]);
-    engineRef.current?.vehiclePhysics.resetRace(
-      new THREE.Vector3(asHost ? -2.2 : 2.2, 0.64, 10)
-    );
-    startGridCountdown();
+
+    const initialSlot = getMultiplayerGridSlot(asHost ? 0 : 1);
+    const initialVec = new THREE.Vector3(initialSlot[0], initialSlot[1], initialSlot[2]);
+    if (engineRef.current) {
+      engineRef.current.multiplayerSpawnPos = initialVec.clone();
+      engineRef.current.vehiclePhysics.resetRace(initialVec);
+    }
+
+    // Lock everyone on the starting grid until the Host clicks START RACE
+    clearGridCountdown();
+    mpRacePhaseRef.current = 'waiting_start';
+    setMpRacePhase('waiting_start');
 
     const hexColor = '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0');
     const mp = new MultiplayerRoomManager(
@@ -401,26 +463,66 @@ export const GameView: React.FC<GameViewProps> = ({
       }
     };
 
+    const alignLocalGridSlot = () => {
+      const slot = mp.getLocalGridPosition();
+      const slotVec = new THREE.Vector3(slot[0], slot[1], slot[2]);
+      if (engineRef.current) {
+        engineRef.current.multiplayerSpawnPos = slotVec.clone();
+        if (mpRacePhaseRef.current === 'waiting_start') {
+          engineRef.current.vehiclePhysics.resetRace(slotVec);
+        }
+      }
+    };
+
     mp.init(asHost, {
       onPlayerJoined: () => {
         const list = mp.getOpponentsList();
         engineRef.current?.syncOpponents(list);
         setOpponents(list);
+        alignLocalGridSlot();
       },
       onPlayerLeft: () => {
         const list = mp.getOpponentsList();
         engineRef.current?.syncOpponents(list);
         setOpponents(list);
+        alignLocalGridSlot();
       },
       onPlayerUpdate: syncList,
-      onRoomReady: () => setIsMpConnected(true),
+      onRoomReady: () => {
+        setIsMpConnected(true);
+        alignLocalGridSlot();
+      },
       onStatusChange: (status, detail) => {
         setMpStatus(status);
         setMpStatusMsg(detail || '');
       },
-      onRaceConfig: (targetLaps) => {
+      onRaceConfig: (targetLaps, _raceEpoch, hasRaceStarted) => {
         setMpTargetLaps(targetLaps);
         mpTargetLapsRef.current = targetLaps;
+        if (hasRaceStarted && mpRacePhaseRef.current === 'waiting_start') {
+          mpRacePhaseRef.current = 'racing';
+          setMpRacePhase('racing');
+        }
+      },
+      onRaceStartCountdown: (durationSec, targetLaps) => {
+        setMpTargetLaps(targetLaps);
+        mpTargetLapsRef.current = targetLaps;
+        localRaceFinishedRef.current = false;
+        setLocalRaceFinished(false);
+        setDismissedPodium(false);
+        setRaceResults([]);
+        const slot = mp.getLocalGridPosition();
+        const slotVec = new THREE.Vector3(slot[0], slot[1], slot[2]);
+        if (engineRef.current) {
+          engineRef.current.multiplayerSpawnPos = slotVec.clone();
+          engineRef.current.vehiclePhysics.resetRace(slotVec);
+        }
+        mpRacePhaseRef.current = 'countdown';
+        setMpRacePhase('countdown');
+        startGridCountdown(durationSec || 10, () => {
+          mpRacePhaseRef.current = 'racing';
+          setMpRacePhase('racing');
+        });
       },
       onRaceFinishUpdate: (results) => {
         setRaceResults(results);
@@ -432,7 +534,7 @@ export const GameView: React.FC<GameViewProps> = ({
         }
       },
       onRaceRestart: (targetLaps) => {
-        handleResetRaceState(targetLaps);
+        handleResetRaceState(targetLaps, 10);
       }
     });
 
@@ -441,8 +543,14 @@ export const GameView: React.FC<GameViewProps> = ({
   };
 
   const leaveMultiplayer = () => {
+    clearGridCountdown();
+    mpRacePhaseRef.current = 'idle';
+    setMpRacePhase('idle');
     mpManagerRef.current?.destroy();
     mpManagerRef.current = null;
+    if (engineRef.current) {
+      engineRef.current.multiplayerSpawnPos = null;
+    }
     setIsMpConnected(false);
     setIsMpHost(true);
     setMpStatus('waiting');
@@ -624,7 +732,9 @@ export const GameView: React.FC<GameViewProps> = ({
       }
       lastHornRef.current = !!currentInput.horn;
 
-      const isCountdownLocked = countdownRef.current !== null && countdownRef.current !== 'GO!';
+      const isCountdownLocked =
+        mpRacePhaseRef.current === 'waiting_start' ||
+        (countdownRef.current !== null && countdownRef.current !== 'GO!');
 
       const currentTelemetry = engine.update(delta, currentInput, isCountdownLocked);
 
@@ -645,7 +755,7 @@ export const GameView: React.FC<GameViewProps> = ({
         setIsLetterboxed(engine.isLetterboxed);
         setNearMissActive(engine.nearMissActive);
         setPlayerPos(engine.vehiclePhysics.position.clone());
-        setPlayerHeading(engine.vehiclePhysics.rotation.y);
+        setPlayerHeading(engine.vehiclePhysics.getHeadingAngle());
         setTrafficStates(engine.trafficStates);
 
         hostRef.current?.sendFeedback({
@@ -687,11 +797,20 @@ export const GameView: React.FC<GameViewProps> = ({
 
     const handleResize = () => engine.handleResize();
     window.addEventListener('resize', handleResize);
+    const resizeTarget = canvasRef.current?.parentElement || canvasRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && resizeTarget
+        ? new ResizeObserver(() => engine.handleResize())
+        : null;
+    if (resizeObserver && resizeTarget) {
+      resizeObserver.observe(resizeTarget);
+    }
     // Guarantee clean resize once layout settles
     const resizeTimer = setTimeout(handleResize, 50);
 
     return () => {
       clearTimeout(resizeTimer);
+      resizeObserver?.disconnect();
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       engine.dispose();
@@ -700,7 +819,13 @@ export const GameView: React.FC<GameViewProps> = ({
   }, []);
 
   const content = (
-    <div className="relative w-screen h-[100dvh] overflow-hidden bg-[#0a0c12]">
+    <div
+      className={
+        isMobile
+          ? 'relative w-full h-full overflow-hidden bg-[#0a0c12]'
+          : 'relative w-screen h-[100dvh] overflow-hidden bg-[#0a0c12]'
+      }
+    >
       <canvas ref={canvasRef} className="w-full h-full block" />
 
       {/* High-Speed Radial Warp */}
@@ -723,18 +848,60 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       )}
 
-      {/* F1 Starting Gantry Countdown (Responsive Scale on Mobile!) */}
+      {/* Multiplayer Grid Hold — Host START RACE Control / Guest Waiting Status */}
+      {isMpConnected && mpRacePhase === 'waiting_start' && !isMpModalOpen && (
+        <div className="absolute top-12 sm:top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-auto select-none">
+          {isMpHost ? (
+            <div className="flex flex-col items-center space-y-2">
+              <button
+                type="button"
+                tabIndex={-1}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleHostStartRace}
+                className="px-7 sm:px-10 py-3 sm:py-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 border-2 border-white/40 text-white font-display font-black text-base sm:text-xl uppercase tracking-widest shadow-[0_0_40px_rgba(16,185,129,0.55)] active:scale-95 transition-all flex items-center gap-2.5 animate-pulse"
+              >
+                <Flag className="w-5 h-5 sm:w-6 sm:h-6" />
+                <span>START RACE</span>
+              </button>
+              <span className="px-3.5 py-1 rounded-full bg-black/75 border border-white/15 text-[10px] sm:text-xs font-mono text-gray-300 tracking-wider">
+                {opponents.length > 0
+                  ? `${opponents.length + 1} RACERS ON GRID • STARTS 10S COUNTDOWN`
+                  : 'SHARE INVITE OR CLICK START FOR 10S COUNTDOWN'}
+              </span>
+            </div>
+          ) : (
+            <div className="px-5 py-2.5 rounded-2xl bg-black/80 border border-cyan-400/50 backdrop-blur-md text-center shadow-[0_0_25px_rgba(34,211,238,0.25)]">
+              <div className="text-xs sm:text-sm font-display font-black text-cyan-300 tracking-widest uppercase animate-pulse">
+                WAITING FOR HOST TO START RACE...
+              </div>
+              <div className="text-[10px] font-mono text-gray-400 mt-0.5">
+                HOLD THROTTLE TO REV ENGINE ON GRID
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* F1 Starting Gantry Countdown (Supports 3s Solo & 10s Multiplayer!) */}
       {countdown !== null && (
-        <div className="absolute top-12 sm:top-20 left-1/2 -translate-x-1/2 scale-75 sm:scale-100 origin-top z-50 flex flex-col items-center pointer-events-none select-none">
-          <div className="glass-panel px-7 py-3.5 rounded-3xl border-2 border-white/20 bg-black/85 shadow-[0_0_50px_rgba(0,0,0,0.95)] flex items-center space-x-4">
+        <div className="absolute top-10 sm:top-16 left-1/2 -translate-x-1/2 scale-75 sm:scale-100 origin-top z-50 flex flex-col items-center pointer-events-none select-none">
+          <div className="glass-panel px-6 py-3 rounded-3xl border-2 border-white/20 bg-black/85 shadow-[0_0_50px_rgba(0,0,0,0.95)] flex items-center space-x-3.5">
             {[1, 2, 3, 4, 5].map((lightIdx) => {
-              const isRed =
-                countdown === 3 ? lightIdx <= 2 : countdown === 2 ? lightIdx <= 4 : countdown === 1;
               const isGo = countdown === 'GO!';
+              const numVal = typeof countdown === 'number' ? countdown : 0;
+              const isRed =
+                !isGo &&
+                (numVal >= 5
+                  ? lightIdx <= Math.ceil((11 - numVal) / 2)
+                  : numVal === 4
+                  ? lightIdx <= 3
+                  : numVal === 3
+                  ? lightIdx <= 4
+                  : numVal === 2 || numVal === 1);
               return (
                 <div
                   key={lightIdx}
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 transition-all duration-150 ${
+                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full border-2 transition-all duration-150 ${
                     isGo
                       ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_35px_#10b981]'
                       : isRed
@@ -746,19 +913,26 @@ export const GameView: React.FC<GameViewProps> = ({
             })}
           </div>
 
-          <div className="mt-2.5 px-5 py-1 rounded-full bg-black/80 border border-white/10 backdrop-blur-md">
+          <div className="mt-2.5 flex items-center gap-3 px-5 py-1.5 rounded-full bg-black/85 border border-white/15 backdrop-blur-md shadow-xl">
             <span
-              className={`font-display font-black tracking-widest text-xl sm:text-2xl uppercase drop-shadow ${
-                countdown === 'GO!' ? 'text-emerald-400 animate-pulse' : 'text-rose-400'
+              className={`font-display font-black tracking-widest text-2xl sm:text-3xl uppercase drop-shadow ${
+                countdown === 'GO!' ? 'text-emerald-400 animate-pulse' : 'text-amber-300'
+              }`}
+            >
+              {countdown === 'GO!' ? 'GO!' : countdown}
+            </span>
+            <span
+              className={`font-display font-bold tracking-widest text-xs sm:text-base uppercase ${
+                countdown === 'GO!' ? 'text-emerald-300' : 'text-rose-300'
               }`}
             >
               {countdown === 'GO!'
                 ? 'LIGHTS OUT & AWAY WE GO!'
-                : countdown === 3
-                ? 'STAGE 3 • GET READY'
-                : countdown === 2
-                ? 'STAGE 2 • REV ENGINES'
-                : 'STAGE 1 • LAUNCH READY'}
+                : typeof countdown === 'number' && countdown > 5
+                ? 'RACE STARTING • WARM UP TIRES'
+                : typeof countdown === 'number' && countdown > 1
+                ? 'REV ENGINES • GET READY'
+                : 'FINAL CHECK • LAUNCH READY'}
             </span>
           </div>
         </div>
@@ -833,6 +1007,7 @@ export const GameView: React.FC<GameViewProps> = ({
           currentAngleDegrees={mobileAngle}
           speedKmh={telemetry.speedKmh}
           hasGyroSignal={hasSensorSignal}
+          isRotated90={isForceRotated90}
         />
       )}
 
@@ -975,23 +1150,29 @@ export const GameView: React.FC<GameViewProps> = ({
               </div>
             )}
 
-            <div className="absolute top-14 right-4 z-40 hud-glass-pod p-3 rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl pointer-events-auto min-w-[260px]">
-              <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-wider mb-1.5 border-b border-white/10 pb-1.5">
-                <span className="flex items-center gap-1.5 text-purple-300">
-                  <Globe className={`w-3.5 h-3.5 ${mpStatus === 'error' ? 'text-rose-400' : 'text-purple-400'}`} />
+            <div
+              className={`absolute z-40 hud-glass-pod rounded-2xl border border-purple-500/40 text-white font-racing shadow-2xl pointer-events-auto ${
+                isMobile
+                  ? 'top-11 right-2 p-2 min-w-[165px] max-w-[195px]'
+                  : 'top-14 right-4 p-3 min-w-[260px]'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1 border-b border-white/10 pb-1">
+                <span className="flex items-center gap-1 text-purple-300 truncate">
+                  <Globe className={`w-3 h-3 shrink-0 ${mpStatus === 'error' ? 'text-rose-400' : 'text-purple-400'}`} />
                   <span>{mpRoomCode} • {mpTargetLaps}L</span>
                 </span>
-                <div className="flex items-center space-x-1.5">
+                <div className="flex items-center space-x-1">
                   <button
                     onClick={copyMultiplayerInvite}
-                    className="text-[10px] text-cyan-300 hover:text-cyan-200 font-mono px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30"
+                    className="text-[9px] sm:text-[10px] text-cyan-300 hover:text-cyan-200 font-mono px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30"
                     title="Copy multiplayer invite URL"
                   >
                     {copiedMpInvite ? 'COPIED' : 'INVITE'}
                   </button>
                   <button
                     onClick={leaveMultiplayer}
-                    className="text-[10px] text-rose-400 hover:text-rose-300 font-mono px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/30"
+                    className="text-[9px] sm:text-[10px] text-rose-400 hover:text-rose-300 font-mono px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/30"
                   >
                     LEAVE
                   </button>
@@ -1000,7 +1181,7 @@ export const GameView: React.FC<GameViewProps> = ({
 
               {mpStatusMsg && (
                 <div
-                  className={`text-[10px] font-mono mb-1.5 px-1.5 py-0.5 rounded ${
+                  className={`text-[9px] sm:text-[10px] font-mono mb-1 px-1.5 py-0.5 rounded truncate ${
                     mpStatus === 'error'
                       ? 'bg-rose-500/20 text-rose-300'
                       : mpStatus === 'connected'
@@ -1012,45 +1193,46 @@ export const GameView: React.FC<GameViewProps> = ({
                 </div>
               )}
 
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {racers.map((r, idx) => (
                   <div
                     key={r.id}
-                    className={`flex items-center justify-between text-xs py-1 px-2 rounded-lg border ${
+                    className={`flex items-center justify-between text-[10px] sm:text-xs py-0.5 sm:py-1 px-1.5 sm:px-2 rounded-lg border ${
                       r.isLocal
                         ? 'bg-cyan-500/15 border-cyan-500/35'
                         : 'bg-white/5 border-white/10'
                     }`}
                   >
-                    <span
-                      className="font-bold flex items-center gap-1.5 truncate max-w-[155px]"
-                      style={{ color: r.color }}
-                    >
-                      <span className="text-[10px] font-mono px-1 rounded bg-black/50 text-amber-300">
+                    <span className="font-bold flex items-center gap-1.5 truncate max-w-[115px] sm:max-w-[165px] text-white">
+                      <span className="text-[9px] font-mono px-1 rounded bg-black/50 text-amber-300">
                         #{r.finishRank || idx + 1}
                       </span>
-                      {r.label}
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0 border border-white/40"
+                        style={{ backgroundColor: r.color }}
+                      />
+                      <span className="truncate">{r.label}</span>
                     </span>
-                    <span className="font-mono text-[11px] text-gray-200">
+                    <span className="font-mono text-[10px] sm:text-[11px] text-gray-200">
                       {r.finishRank ? 'FIN' : `${r.speedKmh} KM/H`}
                     </span>
                   </div>
                 ))}
 
                 {opponents.length === 0 && (
-                  <div className="text-[10px] text-gray-400 italic pt-0.5 px-1 text-center font-mono">
+                  <div className="text-[9px] sm:text-[10px] text-gray-400 italic pt-0.5 px-1 text-center font-mono">
                     Share INVITE link — waiting for friends...
                   </div>
                 )}
 
-                {isMpHost && opponents.length > 0 && (
+                {isMpHost && mpRacePhase === 'racing' && opponents.length > 0 && (
                   <button
                     onClick={() => mpManagerRef.current?.requestRaceRestart(mpTargetLaps)}
-                    className="w-full mt-1.5 py-1.5 bg-gradient-to-r from-amber-500/25 to-cyan-500/25 hover:from-amber-500/40 hover:to-cyan-500/40 border border-amber-400/50 text-amber-200 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider flex items-center justify-center gap-1"
-                    title="Reset all racers to start grid for a synchronized race start"
+                    className="w-full mt-1 py-1 sm:py-1.5 bg-gradient-to-r from-amber-500/25 to-cyan-500/25 hover:from-amber-500/40 hover:to-cyan-500/40 border border-amber-400/50 text-amber-200 rounded-lg text-[9px] sm:text-[10px] font-display font-bold uppercase tracking-wider flex items-center justify-center gap-1"
+                    title="Reset all racers to start grid for a synchronized 10s countdown race start"
                   >
                     <Flag className="w-3 h-3" />
-                    <span>SYNC START RACE (ALL)</span>
+                    <span>RESTART 10S RACE</span>
                   </button>
                 )}
               </div>
@@ -1071,9 +1253,9 @@ export const GameView: React.FC<GameViewProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label="Race Finish Results"
-            className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
           >
-            <div className="glass-panel p-6 rounded-2xl border border-amber-400/50 max-w-md w-full text-white font-racing relative shadow-[0_0_50px_rgba(251,191,36,0.25)] text-center">
+            <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-amber-400/50 max-w-md w-full max-h-[94%] overflow-y-auto text-white font-racing relative shadow-[0_0_50px_rgba(251,191,36,0.25)] text-center my-auto">
               <div className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-gradient-to-br from-amber-400/30 to-cyan-500/30 border border-amber-400/50">
                 {myRank === 1 ? (
                   <Trophy className="w-9 h-9 text-amber-300 animate-bounce" />
@@ -1149,9 +1331,9 @@ export const GameView: React.FC<GameViewProps> = ({
           role="dialog"
           aria-modal="true"
           aria-label="Race Pause and Settings"
-          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
         >
-          <div className="glass-panel p-5 sm:p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white font-racing relative shadow-2xl my-auto">
+          <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full max-h-[94%] overflow-y-auto text-white font-racing relative shadow-2xl my-auto">
             <button
               onClick={() => setIsPauseOpen(false)}
               aria-label="Resume game"
@@ -1262,9 +1444,9 @@ export const GameView: React.FC<GameViewProps> = ({
           role="dialog"
           aria-modal="true"
           aria-label="Pair Gyro Controller"
-          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
         >
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white text-center font-racing relative shadow-2xl">
+          <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full max-h-[94%] overflow-y-auto text-white text-center font-racing relative shadow-2xl my-auto">
             <button
               onClick={() => setIsQrModalOpen(false)}
               aria-label="Close QR Modal"
@@ -1376,126 +1558,137 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       )}
 
-      {/* Multiplayer Lobby Modal */}
+      {/* Multiplayer Lobby Modal (Responsive 2-Column Compact Fit for Mobile Landscape!) */}
       {isMpModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Multiplayer Racing Lobby"
-          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
         >
-          <div className="glass-panel p-6 rounded-2xl border border-purple-500/40 max-w-md w-full text-white font-racing relative shadow-2xl my-auto">
+          <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-purple-500/40 max-w-xl w-full max-h-[94%] overflow-y-auto text-white font-racing relative shadow-2xl my-auto">
             <button
               onClick={() => setIsMpModalOpen(false)}
               aria-label="Close Multiplayer Modal"
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center space-x-2 mb-2">
-              <Globe className="w-5 h-5 text-purple-400" />
-              <h3 className="text-xl font-display font-bold text-white uppercase">
+            <div className="flex items-center space-x-2 mb-1">
+              <Globe className="w-5 h-5 text-purple-400 shrink-0" />
+              <h3 className="text-lg sm:text-xl font-display font-bold text-white uppercase">
                 Multiplayer Racing Lobby
               </h3>
             </div>
-            <p className="text-xs text-gray-400 mb-4">
-              Race in real-time against friends on the 12.5 KM Grand Circuit via P2P WebRTC.
+            <p className="text-[11px] sm:text-xs text-gray-400 mb-3 sm:mb-4">
+              Race side-by-side in real-time on the 12.5 KM Grand Circuit via P2P WebRTC.
             </p>
 
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="mp-username" className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
-                  Driver Name
-                </label>
-                <input
-                  id="mp-username"
-                  type="text"
-                  maxLength={16}
-                  value={mpUsername}
-                  onChange={(e) => setMpUsername(e.target.value)}
-                  className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2 text-sm font-display font-bold text-white tracking-wider focus:outline-none focus:border-purple-400"
-                  placeholder="Enter your racer tag"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label htmlFor="mp-roomcode" className="text-[11px] uppercase font-bold text-gray-400">
-                    Room Code (6 Characters)
+            <div
+              className={`grid ${
+                isForceRotated90 ? 'grid-cols-2 gap-2.5' : 'grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4'
+              } items-start`}
+            >
+              <div className="space-y-2.5 sm:space-y-3">
+                <div>
+                  <label htmlFor="mp-username" className="text-[10px] sm:text-[11px] uppercase font-bold text-gray-400 block mb-1">
+                    Driver Name
                   </label>
-                  <button
-                    onClick={() => setMpRoomCode(roomId)}
-                    className="text-[10px] text-cyan-400 hover:underline font-mono"
-                  >
-                    Use Default ({roomId})
-                  </button>
+                  <input
+                    id="mp-username"
+                    type="text"
+                    maxLength={16}
+                    value={mpUsername}
+                    onChange={(e) => setMpUsername(e.target.value)}
+                    className="w-full bg-black/50 border border-white/20 rounded-xl px-3.5 py-1.5 sm:py-2 text-sm font-display font-bold text-white tracking-wider focus:outline-none focus:border-purple-400"
+                    placeholder="Enter your racer tag"
+                  />
                 </div>
-                <input
-                  id="mp-roomcode"
-                  type="text"
-                  maxLength={6}
-                  value={mpRoomCode}
-                  onChange={(e) => setMpRoomCode(e.target.value.toUpperCase())}
-                  className="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-2.5 text-lg font-display font-bold text-cyan-300 tracking-widest text-center focus:outline-none focus:border-cyan-400 uppercase"
-                />
-              </div>
 
-              <div>
-                <span className="text-[11px] uppercase font-bold text-gray-400 block mb-1">
-                  Race Laps (When Hosting)
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {[1, 2, 3].map((laps) => (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="mp-roomcode" className="text-[10px] sm:text-[11px] uppercase font-bold text-gray-400">
+                      Room Code
+                    </label>
                     <button
-                      key={laps}
                       type="button"
-                      onClick={() => setMpTargetLaps(laps)}
-                      className={`py-1.5 rounded-xl text-xs font-bold font-mono uppercase border transition-all ${
-                        mpTargetLaps === laps
-                          ? 'bg-purple-500 text-white border-purple-300 shadow-lg'
-                          : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
-                      }`}
+                      onClick={() => setMpRoomCode(roomId)}
+                      className="text-[10px] text-cyan-400 hover:underline font-mono"
                     >
-                      {laps} Lap{laps > 1 ? 's' : ''}
+                      Default ({roomId})
                     </button>
-                  ))}
+                  </div>
+                  <input
+                    id="mp-roomcode"
+                    type="text"
+                    maxLength={6}
+                    value={mpRoomCode}
+                    onChange={(e) => setMpRoomCode(e.target.value.toUpperCase())}
+                    className="w-full bg-black/50 border border-white/20 rounded-xl px-3.5 py-2 text-base sm:text-lg font-display font-bold text-cyan-300 tracking-widest text-center focus:outline-none focus:border-cyan-400 uppercase"
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => startMultiplayer(true)}
-                  className="py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
-                >
-                  Host Room
-                </button>
-                <button
-                  onClick={() => startMultiplayer(false)}
-                  className="py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
-                >
-                  Join Room
-                </button>
-              </div>
+              <div className="space-y-2.5 sm:space-y-3">
+                <div>
+                  <span className="text-[10px] sm:text-[11px] uppercase font-bold text-gray-400 block mb-1">
+                    Race Laps (Host)
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map((laps) => (
+                      <button
+                        key={laps}
+                        type="button"
+                        onClick={() => setMpTargetLaps(laps)}
+                        className={`py-1.5 rounded-xl text-xs font-bold font-mono uppercase border transition-all ${
+                          mpTargetLaps === laps
+                            ? 'bg-purple-500 text-white border-purple-300 shadow-lg'
+                            : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                        }`}
+                      >
+                        {laps} Lap{laps > 1 ? 's' : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <button
-                onClick={copyMultiplayerInvite}
-                className="w-full py-2 bg-white/10 hover:bg-white/15 border border-cyan-500/30 text-cyan-300 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
-              >
-                {copiedMpInvite ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedMpInvite ? `INVITE LINK COPIED (${mpRoomCode})!` : `COPY INVITE LINK FOR FRIENDS (${mpRoomCode})`}</span>
-              </button>
-
-              {isMpConnected && (
-                <div className="pt-2 border-t border-white/10">
+                <div className="grid grid-cols-2 gap-2.5 pt-0.5">
                   <button
-                    onClick={leaveMultiplayer}
-                    className="w-full py-2 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-bold uppercase tracking-wider"
+                    type="button"
+                    onClick={() => startMultiplayer(true)}
+                    className="py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
                   >
-                    Disconnect from {mpRoomCode}
+                    Host Room
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startMultiplayer(false)}
+                    className="py-2.5 sm:py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                  >
+                    Join Room
                   </button>
                 </div>
-              )}
+
+                <button
+                  type="button"
+                  onClick={copyMultiplayerInvite}
+                  className="w-full py-2 bg-white/10 hover:bg-white/15 border border-cyan-500/30 text-cyan-300 rounded-xl text-[11px] font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                >
+                  {copiedMpInvite ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedMpInvite ? `INVITE COPIED (${mpRoomCode})!` : `COPY INVITE (${mpRoomCode})`}</span>
+                </button>
+
+                {isMpConnected && (
+                  <button
+                    type="button"
+                    onClick={leaveMultiplayer}
+                    className="w-full py-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-bold uppercase tracking-wider"
+                  >
+                    Disconnect ({mpRoomCode})
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1508,6 +1701,8 @@ export const GameView: React.FC<GameViewProps> = ({
       <MobileOrientationGuard
         onSwitchToController={onSwitchToController}
         onRequestGyroPermission={requestGyroPermission}
+        onForceRotatedChange={setIsForceRotated90}
+        isMultiplayerInvite={initialOpenMultiplayer}
       >
         {content}
       </MobileOrientationGuard>

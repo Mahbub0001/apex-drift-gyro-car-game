@@ -206,7 +206,7 @@ export class GameEngine {
       antialias: true,
       powerPreference: 'high-performance'
     });
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(width, height, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -848,12 +848,13 @@ export class GameEngine {
   }
 
   public handleResize() {
-    const width = this.canvas.clientWidth || window.innerWidth;
-    const height = this.canvas.clientHeight || window.innerHeight;
+    const container = this.canvas.parentElement;
+    const width = container?.clientWidth || this.canvas.clientWidth || window.innerWidth;
+    const height = container?.clientHeight || this.canvas.clientHeight || window.innerHeight;
     if (width <= 0 || height <= 0) return;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(width, height, false);
   }
 
   public dispose() {

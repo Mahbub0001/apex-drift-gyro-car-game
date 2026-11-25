@@ -388,9 +388,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
       {/* Bottom Pedals + Integrated Manual Paddle Shifters Cockpit */}
       <div className="flex items-end justify-between pointer-events-none pb-1 px-0.5 mt-auto">
         {/* Left: Optional Touch Arrows + Brake + (Gear Down Paddle stacked directly above Slide Drift) */}
-        <div className="flex items-end space-x-2 pointer-events-auto">
+        <div className="flex items-end space-x-1.5 md:space-x-2 pointer-events-auto">
           {steerMode === 'touch' && (
-            <div className="flex items-center space-x-1.5 mr-0.5">
+            <div className="flex items-center space-x-1 mr-0.5">
               <button
                 onPointerDown={(e) => {
                   e.preventDefault();
@@ -400,14 +400,14 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onPointerUp={() => handleTouchSteer('center')}
                 onPointerCancel={() => handleTouchSteer('center')}
                 aria-label="Steer Left"
-                className={`w-14 h-24 rounded-2xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 shadow-xl touch-none ${
+                className={`w-10 md:w-14 h-20 md:h-24 rounded-2xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 shadow-xl touch-none ${
                   touchSteerDirection === 'left'
                     ? 'bg-cyan-500/70 border-cyan-300 shadow-[0_0_25px_#00f2fe]'
                     : 'bg-slate-950/55 border-white/25 text-white'
                 }`}
               >
-                <ChevronLeft className="w-7 h-7 text-cyan-300" />
-                <span className="text-[9px] font-bold">LEFT</span>
+                <ChevronLeft className="w-6 h-6 md:w-7 md:h-7 text-cyan-300" />
+                <span className="text-[8px] md:text-[9px] font-bold">LEFT</span>
               </button>
 
               <button
@@ -419,14 +419,14 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onPointerUp={() => handleTouchSteer('center')}
                 onPointerCancel={() => handleTouchSteer('center')}
                 aria-label="Steer Right"
-                className={`w-14 h-24 rounded-2xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 shadow-xl touch-none ${
+                className={`w-10 md:w-14 h-20 md:h-24 rounded-2xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 shadow-xl touch-none ${
                   touchSteerDirection === 'right'
                     ? 'bg-cyan-500/70 border-cyan-300 shadow-[0_0_25px_#00f2fe]'
                     : 'bg-slate-950/55 border-white/25 text-white'
                 }`}
               >
-                <ChevronRight className="w-7 h-7 text-cyan-300" />
-                <span className="text-[9px] font-bold">RIGHT</span>
+                <ChevronRight className="w-6 h-6 md:w-7 md:h-7 text-cyan-300" />
+                <span className="text-[8px] md:text-[9px] font-bold">RIGHT</span>
               </button>
             </div>
           )}
@@ -440,7 +440,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             onPointerCancel={handleBrakePointerUp}
             role="button"
             aria-label="Brake Pedal"
-            className={`w-20 sm:w-24 md:w-28 h-32 sm:h-36 md:h-44 rounded-3xl relative overflow-hidden flex flex-col justify-end p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
+            className={`${
+              steerMode === 'touch' ? 'w-14 md:w-20 lg:w-24' : 'w-[72px] md:w-24 lg:w-28'
+            } h-28 md:h-36 lg:h-40 rounded-3xl relative overflow-hidden flex flex-col justify-end p-1.5 md:p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
               brake > 0.05
                 ? 'bg-rose-950/60 border-rose-400 shadow-[0_0_30px_rgba(244,63,94,0.55)]'
                 : 'bg-slate-950/40 border-white/25 hover:border-white/40'
@@ -475,13 +477,15 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                   onShiftDown();
                 }}
                 aria-label="Shift Gear Down"
-                className="w-16 sm:w-[72px] md:w-20 h-12 sm:h-14 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border border-amber-400/50 bg-slate-950/65 hover:bg-amber-500/25 active:bg-amber-500/45 text-amber-300 flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none"
+                className={`${
+                  steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
+                } h-11 md:h-13 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border border-amber-400/50 bg-slate-950/65 hover:bg-amber-500/25 active:bg-amber-500/45 text-amber-300 flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none`}
               >
                 <div className="flex items-center space-x-0.5 leading-none">
-                  <span className="text-[10px] font-mono">GEAR</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[9px] md:text-[10px] font-mono">GEAR</span>
+                  <ChevronDown className="w-3 h-3 md:w-3.5 md:h-3.5 text-amber-400" />
                 </div>
-                <span className="text-[10px] font-mono text-gray-300 leading-tight">
+                <span className="text-[9px] md:text-[10px] font-mono text-gray-300 leading-tight">
                   {gear === 'N' ? '→ R' : gear === 1 ? '→ N/R' : 'AUTO ▼'}
                 </span>
               </button>
@@ -503,20 +507,22 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 setHandbrake(false);
                 onInputChange({ handbrake: false });
               }}
-              className={`w-16 sm:w-[72px] md:w-20 h-20 sm:h-24 rounded-2xl font-display font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1.5 sm:px-2 ${
+              className={`${
+                steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
+              } h-16 md:h-20 rounded-2xl font-display font-black text-[11px] md:text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1 ${
                 handbrake
                   ? 'bg-rose-600/80 text-white shadow-[0_0_28px_rgba(244,63,94,0.7)] border-rose-300'
                   : 'bg-slate-950/45 text-rose-200 border-rose-500/45 active:bg-rose-500/50'
               }`}
             >
-              <span className="text-[9px] text-rose-300 font-mono">SLIDE</span>
-              <span className="text-xs tracking-widest font-black leading-tight">DRIFT</span>
+              <span className="text-[8px] md:text-[9px] text-rose-300 font-mono">SLIDE</span>
+              <span className="text-[11px] md:text-xs tracking-wider font-black leading-tight">DRIFT</span>
             </button>
           </div>
         </div>
 
         {/* Right: (Gear Up Paddle stacked directly above NITRO) + Gas Pedal */}
-        <div className="flex items-end space-x-2 pointer-events-auto">
+        <div className="flex items-end space-x-1.5 md:space-x-2 pointer-events-auto">
           <div className="flex flex-col items-center space-y-1.5">
             {onShiftUp && (
               <button
@@ -527,17 +533,19 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                   onShiftUp();
                 }}
                 aria-label="Shift Gear Up"
-                className={`w-16 sm:w-[72px] md:w-20 h-12 sm:h-14 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none ${
+                className={`${
+                  steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
+                } h-11 md:h-13 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none ${
                   shouldShiftUp
                     ? 'bg-rose-600/85 border-cyan-300 text-white shadow-[0_0_24px_rgba(0,242,254,0.85)] animate-pulse'
                     : 'bg-slate-950/65 border-cyan-400/50 text-cyan-300 hover:bg-cyan-500/25 active:bg-cyan-500/45'
                 }`}
               >
                 <div className="flex items-center space-x-0.5 leading-none">
-                  <span className="text-[10px] font-mono">GEAR</span>
-                  <ChevronUp className="w-3.5 h-3.5 text-cyan-300" />
+                  <span className="text-[9px] md:text-[10px] font-mono">GEAR</span>
+                  <ChevronUp className="w-3 h-3 md:w-3.5 md:h-3.5 text-cyan-300" />
                 </div>
-                <span className="text-[10px] font-mono text-gray-200 leading-tight">
+                <span className="text-[9px] md:text-[10px] font-mono text-gray-200 leading-tight">
                   {shouldShiftUp ? 'SHIFT NOW!' : 'SHIFT +'}
                 </span>
               </button>
@@ -559,14 +567,16 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 setNitro(false);
                 onInputChange({ nitro: false });
               }}
-              className={`w-16 sm:w-[72px] md:w-20 h-20 sm:h-24 rounded-2xl font-display font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1.5 sm:px-2 ${
+              className={`${
+                steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
+              } h-16 md:h-20 rounded-2xl font-display font-black text-[11px] md:text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1 ${
                 nitro
                   ? 'bg-gradient-to-r from-purple-600/85 to-cyan-500/85 text-white shadow-[0_0_30px_rgba(168,85,247,0.8)] border-cyan-300'
                   : 'bg-slate-950/45 text-cyan-200 border-purple-500/45 active:bg-purple-600/50'
               }`}
             >
-              <Flame className="w-5 h-5 text-cyan-300 animate-pulse mb-0.5" />
-              <span className="text-xs tracking-widest font-black leading-tight">NITRO</span>
+              <Flame className="w-4 h-4 md:w-5 md:h-5 text-cyan-300 animate-pulse mb-0.5" />
+              <span className="text-[11px] md:text-xs tracking-wider font-black leading-tight">NITRO</span>
             </button>
           </div>
 
@@ -579,7 +589,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             onPointerCancel={handleThrottlePointerUp}
             role="button"
             aria-label="Gas Accelerator Pedal"
-            className={`w-20 sm:w-24 md:w-28 h-32 sm:h-36 md:h-44 rounded-3xl relative overflow-hidden flex flex-col justify-end p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
+            className={`${
+              steerMode === 'touch' ? 'w-14 md:w-20 lg:w-24' : 'w-[72px] md:w-24 lg:w-28'
+            } h-28 md:h-36 lg:h-40 rounded-3xl relative overflow-hidden flex flex-col justify-end p-1.5 md:p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
               throttle > 0.05
                 ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_30px_rgba(0,242,254,0.55)]'
                 : 'bg-slate-950/40 border-white/25 hover:border-white/40'
