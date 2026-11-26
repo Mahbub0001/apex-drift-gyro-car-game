@@ -473,20 +473,21 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     e.preventDefault();
     activeThrottlePointerRef.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setThrottle(1.0);
-    inputRef.current.throttle = 1.0;
-    dispatchImmediateInput({ throttle: 1.0 });
+    const ratio = computePedalRatio(e, e.currentTarget);
+    const initial = ratio >= 0.55 ? 1.0 : Number(Math.max(0.15, Math.min(1.0, ratio * 1.15)).toFixed(2));
+    setThrottle(initial);
+    inputRef.current.throttle = initial;
+    dispatchImmediateInput({ throttle: initial });
     triggerHaptic(20);
   };
 
   const handleThrottlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activeThrottlePointerRef.current !== e.pointerId || !throttleContainerRef.current) return;
     const ratio = computePedalRatio(e, throttleContainerRef.current);
-    const rounded = Number(Math.max(0.2, ratio * 1.2).toFixed(2));
-    const clamped = Math.min(1.0, rounded);
-    setThrottle(clamped);
-    inputRef.current.throttle = clamped;
-    dispatchImmediateInput({ throttle: clamped });
+    const rounded = Number((ratio >= 0.88 ? 1.0 : Math.min(1.0, Math.max(0.05, ratio * 1.12))).toFixed(2));
+    setThrottle(rounded);
+    inputRef.current.throttle = rounded;
+    dispatchImmediateInput({ throttle: rounded });
   };
 
   const handleThrottlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -505,16 +506,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
     e.preventDefault();
     activeBrakePointerRef.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setBrake(1.0);
-    inputRef.current.brake = 1.0;
-    dispatchImmediateInput({ brake: 1.0 });
+    const ratio = computePedalRatio(e, e.currentTarget);
+    const initial = ratio >= 0.55 ? 1.0 : Number(Math.max(0.15, Math.min(1.0, ratio * 1.15)).toFixed(2));
+    setBrake(initial);
+    inputRef.current.brake = initial;
+    dispatchImmediateInput({ brake: initial });
     triggerHaptic(20);
   };
 
   const handleBrakePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activeBrakePointerRef.current !== e.pointerId || !brakeContainerRef.current) return;
     const ratio = computePedalRatio(e, brakeContainerRef.current);
-    const rounded = Number(ratio.toFixed(2));
+    const rounded = Number((ratio >= 0.88 ? 1.0 : Math.min(1.0, Math.max(0.05, ratio * 1.12))).toFixed(2));
     setBrake(rounded);
     inputRef.current.brake = rounded;
     dispatchImmediateInput({ brake: rounded });

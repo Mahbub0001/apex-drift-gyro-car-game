@@ -105,23 +105,31 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
     }
   };
 
+  const computePedalRatio = (e: React.PointerEvent<HTMLDivElement>, el: HTMLDivElement): number => {
+    const rect = el.getBoundingClientRect();
+    if (isRotated90) {
+      return Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+    }
+    return Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
+  };
+
   const handleThrottlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     activeThrottlePointerId.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setThrottle(1.0);
-    onInputChange({ throttle: 1.0 });
+    const ratio = computePedalRatio(e, e.currentTarget);
+    // Upper half tap snaps cleanly to full throttle; sliding anywhere modulates 0.05..1.00 smoothly
+    const initial = ratio >= 0.55 ? 1.0 : Number(Math.max(0.15, Math.min(1.0, ratio * 1.15)).toFixed(2));
+    setThrottle(initial);
+    onInputChange({ throttle: initial });
     triggerHaptic(22);
   };
 
   const handleThrottlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activeThrottlePointerId.current !== e.pointerId || !throttleContainerRef.current) return;
-    const rect = throttleContainerRef.current.getBoundingClientRect();
-    const ratio = isRotated90
-      ? Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)))
-      : Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
-    const scaled = Math.min(1.0, Math.max(0.25, ratio * 1.25));
+    const ratio = computePedalRatio(e, throttleContainerRef.current);
+    const scaled = ratio >= 0.88 ? 1.0 : Math.min(1.0, Math.max(0.05, ratio * 1.12));
     const rounded = Number(scaled.toFixed(2));
     setThrottle(rounded);
     onInputChange({ throttle: rounded });
@@ -143,18 +151,18 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
     e.stopPropagation();
     activeBrakePointerId.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setBrake(1.0);
-    onInputChange({ brake: 1.0 });
+    const ratio = computePedalRatio(e, e.currentTarget);
+    const initial = ratio >= 0.55 ? 1.0 : Number(Math.max(0.15, Math.min(1.0, ratio * 1.15)).toFixed(2));
+    setBrake(initial);
+    onInputChange({ brake: initial });
     triggerHaptic(22);
   };
 
   const handleBrakePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activeBrakePointerId.current !== e.pointerId || !brakeContainerRef.current) return;
-    const rect = brakeContainerRef.current.getBoundingClientRect();
-    const ratio = isRotated90
-      ? Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)))
-      : Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
-    const rounded = Number(ratio.toFixed(2));
+    const ratio = computePedalRatio(e, brakeContainerRef.current);
+    const scaled = ratio >= 0.88 ? 1.0 : Math.min(1.0, Math.max(0.05, ratio * 1.12));
+    const rounded = Number(scaled.toFixed(2));
     setBrake(rounded);
     onInputChange({ brake: rounded });
   };

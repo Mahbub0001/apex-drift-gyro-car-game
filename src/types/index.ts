@@ -10,6 +10,7 @@ export interface ControllerInput {
   horn?: boolean;       // honk supercar horn
   shiftUpSeq?: number;  // monotonic counter for manual upshift (WebRTC safe)
   shiftDownSeq?: number;// monotonic counter for manual downshift (WebRTC safe)
+  toggleTransmissionSeq?: number; // monotonic counter to toggle auto/manual gearbox from phone
   cameraSeq?: number;   // monotonic counter for camera toggle (WebRTC safe)
   resetSeq?: number;    // monotonic counter for car reset (WebRTC safe)
   timestamp: number;

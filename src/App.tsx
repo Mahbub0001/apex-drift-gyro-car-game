@@ -72,15 +72,28 @@ export const App: React.FC = () => {
   const [roomId, setRoomId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      const roomParam = urlParams.get('room') || urlParams.get('mp');
-      if (roomParam) return roomParam.toUpperCase().slice(0, 6);
+      // Explicit ?room= is used for gyro pairing (both controller & desktop). Never reuse ?mp= invite code as gyro room ID!
+      const explicitGyroRoom = urlParams.get('room');
+      if (explicitGyroRoom) return explicitGyroRoom.toUpperCase().slice(0, 6);
+
+      try {
+        const cached = window.sessionStorage.getItem('apex_gyro_room_v1');
+        if (cached && cached.length >= 4) return cached.toUpperCase().slice(0, 6);
+      } catch {}
+
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let generated = 'APEX99';
       if (window.crypto?.getRandomValues) {
         const bytes = new Uint8Array(6);
         window.crypto.getRandomValues(bytes);
-        return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+        generated = Array.from(bytes, (b) => chars[b % chars.length]).join('');
+      } else {
+        generated = Math.random().toString(36).substring(2, 8).toUpperCase();
       }
-      return Math.random().toString(36).substring(2, 8).toUpperCase();
+      try {
+        window.sessionStorage.setItem('apex_gyro_room_v1', generated);
+      } catch {}
+      return generated;
     }
     return 'APEX99';
   });
@@ -97,19 +110,15 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const roomParam = urlParams.get('room') || urlParams.get('mp');
-    if (roomParam && roomParam.toUpperCase().slice(0, 6) !== roomId) {
-      setRoomId(roomParam.toUpperCase().slice(0, 6));
+    const explicitGyroRoom = urlParams.get('room');
+    if (explicitGyroRoom && explicitGyroRoom.toUpperCase().slice(0, 6) !== roomId) {
+      setRoomId(explicitGyroRoom.toUpperCase().slice(0, 6));
     }
   }, [roomId]);
 
-  // Initialize Persistent WebRTC Host ONLY in Desktop Host mode (prevents PeerJS ID collisions!)
+  // Initialize Persistent WebRTC Host in Desktop mode (always isolated by unique gyro roomId even when arriving via ?mp=)
   useEffect(() => {
     if (mode !== 'desktop') return;
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mp')) {
-      // Arriving via multiplayer invite link: do not occupy apex-host to avoid controller peer conflict
-      return;
-    }
 
     const host = new WebRTCHost(roomId);
     hostRef.current = host;

@@ -205,7 +205,12 @@ export class WebRTCHost {
     }
   }
 
-  public sendFeedback(telemetry: { speedKmh: number; gear: number | string; rpm: number }) {
+  public sendFeedback(telemetry: {
+    speedKmh: number;
+    gear: number | string;
+    rpm: number;
+    transmissionMode?: 'auto' | 'manual';
+  }) {
     const msg = { type: 'FEEDBACK', payload: telemetry };
     if (this.connection?.open) {
       this.connection.send(msg);

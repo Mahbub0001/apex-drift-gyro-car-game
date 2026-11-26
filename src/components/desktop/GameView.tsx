@@ -177,6 +177,7 @@ export const GameView: React.FC<GameViewProps> = ({
     speedKmh: 0,
     rpm: 850,
     gear: 1,
+    transmissionMode: settings.transmissionMode,
     nitroFuel: 100,
     isDrifting: false,
     driftScore: 0,
@@ -204,7 +205,21 @@ export const GameView: React.FC<GameViewProps> = ({
 
   useEffect(() => {
     isPauseRef.current = isPauseOpen;
+    soundRef.current?.setPaused(isPauseOpen);
   }, [isPauseOpen]);
+
+  // Pause audio cleanly if browser tab loses visibility
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        soundRef.current?.setPaused(true);
+      } else if (!isPauseRef.current) {
+        soundRef.current?.setPaused(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   // Initialize Sound Engine respecting persisted mute setting
   useEffect(() => {
@@ -218,10 +233,33 @@ export const GameView: React.FC<GameViewProps> = ({
     };
   }, []);
 
-  // Sync runtime graphics preset changes live into Three.js Engine
+  const transmissionModeRef = useRef(settings.transmissionMode);
+  const onUpdateSettingsRef = useRef(onUpdateSettings);
+  const lastToggleTransSeqRef = useRef<number>(0);
+
+  useEffect(() => {
+    transmissionModeRef.current = settings.transmissionMode;
+    onUpdateSettingsRef.current = onUpdateSettings;
+  }, [settings.transmissionMode, onUpdateSettings]);
+
+  const toggleTransmission = () => {
+    const nextMode = transmissionModeRef.current === 'auto' ? 'manual' : 'auto';
+    transmissionModeRef.current = nextMode;
+    soundRef.current?.init();
+    soundRef.current?.playUiClick();
+    engineRef.current?.setTransmissionMode(nextMode);
+    onUpdateSettingsRef.current?.({ transmissionMode: nextMode });
+  };
+
+  // Sync runtime graphics preset & transmission mode live into Three.js Engine
   useEffect(() => {
     engineRef.current?.applyGraphicsSettings(settings);
+    engineRef.current?.setTransmissionMode(settings.transmissionMode);
   }, [settings]);
+
+  useEffect(() => {
+    engineRef.current?.setMultiplayerActive(isMpConnected);
+  }, [isMpConnected]);
 
   // Sync mute state cleanly when updated from Pause or Header
   const toggleSound = () => {
@@ -358,6 +396,15 @@ export const GameView: React.FC<GameViewProps> = ({
       sharedHost.setInputCallback((incomingInput) => {
         soundRef.current?.init();
         lastGyroPacketTimeRef.current = performance.now();
+        if (typeof incomingInput.toggleTransmissionSeq === 'number') {
+          if (incomingInput.toggleTransmissionSeq < lastToggleTransSeqRef.current) {
+            lastToggleTransSeqRef.current = incomingInput.toggleTransmissionSeq;
+          }
+          if (incomingInput.toggleTransmissionSeq > lastToggleTransSeqRef.current) {
+            lastToggleTransSeqRef.current = incomingInput.toggleTransmissionSeq;
+            toggleTransmission();
+          }
+        }
         inputRef.current = incomingInput;
         setActiveInputSource('gyro');
       });
@@ -385,6 +432,15 @@ export const GameView: React.FC<GameViewProps> = ({
       (incomingInput) => {
         soundRef.current?.init();
         lastGyroPacketTimeRef.current = performance.now();
+        if (typeof incomingInput.toggleTransmissionSeq === 'number') {
+          if (incomingInput.toggleTransmissionSeq < lastToggleTransSeqRef.current) {
+            lastToggleTransSeqRef.current = incomingInput.toggleTransmissionSeq;
+          }
+          if (incomingInput.toggleTransmissionSeq > lastToggleTransSeqRef.current) {
+            lastToggleTransSeqRef.current = incomingInput.toggleTransmissionSeq;
+            toggleTransmission();
+          }
+        }
         inputRef.current = incomingInput;
         setActiveInputSource('gyro');
       },
@@ -632,6 +688,8 @@ export const GameView: React.FC<GameViewProps> = ({
 
       if (e.code === 'KeyC' && !e.repeat) {
         engineRef.current?.cycleCamera();
+      } else if (e.code === 'KeyG' && !e.repeat) {
+        toggleTransmission();
       } else if (e.code === 'KeyR' && !e.repeat) {
         engineRef.current?.resetCar();
       } else if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyE') && !e.repeat) {
@@ -781,7 +839,8 @@ export const GameView: React.FC<GameViewProps> = ({
         hostRef.current?.sendFeedback({
           speedKmh: currentTelemetry.speedKmh,
           gear: currentTelemetry.gear,
-          rpm: currentTelemetry.rpm
+          rpm: currentTelemetry.rpm,
+          transmissionMode: currentTelemetry.transmissionMode
         });
       }
 
