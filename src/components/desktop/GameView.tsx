@@ -1032,6 +1032,8 @@ export const GameView: React.FC<GameViewProps> = ({
           opponents={opponents}
           nearMissActive={nearMissActive}
           isMobile={isMobile}
+          transmissionMode={settings.transmissionMode}
+          onToggleTransmission={toggleTransmission}
           onCameraClick={() => engineRef.current?.cycleCamera()}
           onPauseClick={() => setIsPauseOpen(true)}
         />
@@ -1070,6 +1072,8 @@ export const GameView: React.FC<GameViewProps> = ({
           }}
           gear={telemetry.gear}
           shouldShiftUp={telemetry.shouldShiftUp}
+          transmissionMode={settings.transmissionMode}
+          onToggleTransmission={toggleTransmission}
           onRecalibrateGyro={recalibrateMobileGyro}
           onOpenGarage={onOpenGarage}
           onOpenPause={() => setIsPauseOpen(true)}
@@ -1104,7 +1108,7 @@ export const GameView: React.FC<GameViewProps> = ({
                 onExit();
               }}
               onMouseEnter={() => soundRef.current?.playUiHover()}
-              className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-white/15 text-xs font-bold font-racing uppercase tracking-wider text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto shadow-lg"
+              className="flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
               title="Return to Main Menu"
             >
               <span>← Menu</span>
@@ -1121,10 +1125,14 @@ export const GameView: React.FC<GameViewProps> = ({
               setIsQrModalOpen(true);
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-cyan-500/35 text-xs font-bold font-racing uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
+            className={`flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border text-xs font-semibold active:scale-95 transition-all pointer-events-auto ${
+              isPhoneConnected
+                ? 'border-emerald-400/50 text-emerald-300'
+                : 'border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/15'
+            }`}
           >
-            <QrCode className="w-4 h-4 text-cyan-400" />
-            <span>{isPhoneConnected ? 'Gyro Synced' : 'Phone Gyro'}</span>
+            <QrCode className="w-3.5 h-3.5" />
+            <span>{isPhoneConnected ? 'Gyro Synced' : 'Phone Wheel'}</span>
           </button>
 
           <button
@@ -1137,9 +1145,9 @@ export const GameView: React.FC<GameViewProps> = ({
               onOpenGarage?.();
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-amber-500/35 text-xs font-bold font-racing uppercase tracking-wider text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
+            className="flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-[#F5A623] hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
           >
-            <Warehouse className="w-4 h-4 text-amber-400" />
+            <Warehouse className="w-3.5 h-3.5" />
             <span>{selectedCar.name}</span>
           </button>
 
@@ -1153,9 +1161,9 @@ export const GameView: React.FC<GameViewProps> = ({
               setIsMpModalOpen(true);
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className="flex items-center space-x-1.5 hud-glass-capsule px-3 py-2 rounded-xl border border-purple-500/35 text-xs font-bold font-racing uppercase tracking-wider text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all pointer-events-auto shadow-lg"
+            className="flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
           >
-            <Users className="w-4 h-4 text-purple-400" />
+            <Users className="w-3.5 h-3.5 text-[#00E5FF]" />
             <span>{isMpConnected ? `${mpRoomCode} (${opponents.length + 1})` : 'Multiplayer'}</span>
           </button>
 
@@ -1168,13 +1176,13 @@ export const GameView: React.FC<GameViewProps> = ({
               toggleSound();
             }}
             aria-label={settings.isMuted ? 'Unmute Audio' : 'Mute Audio'}
-            className="p-2 hud-glass-capsule rounded-xl border border-white/15 text-gray-200 hover:text-white active:scale-95 transition-all pointer-events-auto shadow-lg"
+            className="p-1.5 pit-hud-capsule rounded-lg border border-white/15 text-gray-200 hover:text-white active:scale-95 transition-all pointer-events-auto"
             title={settings.isMuted ? 'Unmute Audio' : 'Mute Audio'}
           >
             {settings.isMuted ? (
-              <VolumeX className="w-4 h-4 text-rose-400" />
+              <VolumeX className="w-4 h-4 text-[#FF3B30]" />
             ) : (
-              <Volume2 className="w-4 h-4 text-cyan-400" />
+              <Volume2 className="w-4 h-4 text-[#00E5FF]" />
             )}
           </button>
         </div>
@@ -1412,37 +1420,62 @@ export const GameView: React.FC<GameViewProps> = ({
           aria-label="Race Pause and Settings"
           className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
         >
-          <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full max-h-[94%] overflow-y-auto text-white font-racing relative shadow-2xl my-auto">
+          <div className="pit-surface p-4 sm:p-6 rounded-xl border border-white/15 max-w-md w-full max-h-[94%] overflow-y-auto text-[#F4F5F7] font-racing relative my-auto">
             <button
               onClick={() => setIsPauseOpen(false)}
               aria-label="Resume game"
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
             <h3 className="text-xl font-display font-bold text-white mb-1 flex items-center gap-2">
-              <Sliders className="w-5 h-5 text-cyan-400" /> RACE PAUSED & SETTINGS
+              <Sliders className="w-5 h-5 text-[#00E5FF]" /> Race Paused
             </h3>
-            <p className="text-xs text-gray-400 mb-4 font-mono">
+            <p className="text-xs text-gray-400 mb-4 font-mono tabular-nums">
               Lap {telemetry.lap || 1} • Score {(telemetry.totalScore || 0).toLocaleString()} PTS
             </p>
 
             <div className="space-y-3.5 mb-5">
+              {/* Live Transmission Mode Switch */}
+              <div>
+                <span className="text-xs font-semibold text-gray-300 block mb-1.5">
+                  Transmission
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['auto', 'manual'] as const).map((tm) => (
+                    <button
+                      key={tm}
+                      type="button"
+                      onClick={() => onUpdateSettings?.({ transmissionMode: tm })}
+                      className={`py-1.5 rounded-lg text-xs font-display font-bold uppercase border transition-colors ${
+                        settings.transmissionMode === tm
+                          ? tm === 'auto'
+                            ? 'bg-[#00E5FF] text-[#090A0D] border-[#00E5FF]'
+                            : 'bg-[#F5A623] text-[#090A0D] border-[#F5A623]'
+                          : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {tm === 'auto' ? 'Automatic DCT' : 'Manual Sequential'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Graphics Preset */}
               <div>
-                <span className="text-[11px] uppercase font-bold text-gray-300 block mb-1.5 font-mono">
-                  GRAPHICS QUALITY
+                <span className="text-xs font-semibold text-gray-300 block mb-1.5">
+                  Graphics Quality
                 </span>
                 <div className="grid grid-cols-3 gap-2">
                   {(['ultra', 'high', 'medium'] as const).map((q) => (
                     <button
                       key={q}
                       onClick={() => onUpdateSettings?.({ graphicsQuality: q })}
-                      className={`py-1.5 rounded-xl text-xs font-bold uppercase font-mono border transition-all ${
+                      className={`py-1.5 rounded-lg text-xs font-display font-bold uppercase border transition-colors ${
                         settings.graphicsQuality === q
-                          ? 'bg-cyan-500 text-black border-cyan-400'
-                          : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                          ? 'bg-[#F4F5F7] text-[#090A0D] border-white'
+                          : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
                       }`}
                     >
                       {q}
@@ -1453,9 +1486,9 @@ export const GameView: React.FC<GameViewProps> = ({
 
               {/* Gyro Sensitivity */}
               <div>
-                <div className="flex items-center justify-between text-[11px] uppercase font-bold text-gray-300 mb-1 font-mono">
-                  <label htmlFor="pause-gyro-sens">GYRO STEER SENSITIVITY</label>
-                  <span className="text-cyan-400">{settings.gyroSensitivity.toFixed(1)}x</span>
+                <div className="flex items-center justify-between text-xs font-semibold text-gray-300 mb-1">
+                  <label htmlFor="pause-gyro-sens">Gyro Steer Sensitivity</label>
+                  <span className="font-mono tabular-nums text-[#00E5FF]">{settings.gyroSensitivity.toFixed(1)}x</span>
                 </div>
                 <input
                   id="pause-gyro-sens"
@@ -1467,7 +1500,7 @@ export const GameView: React.FC<GameViewProps> = ({
                   onChange={(e) =>
                     onUpdateSettings?.({ gyroSensitivity: parseFloat(e.target.value) })
                   }
-                  className="w-full accent-cyan-400 cursor-pointer"
+                  className="w-full accent-[#00E5FF] cursor-pointer"
                 />
               </div>
 
@@ -1478,9 +1511,9 @@ export const GameView: React.FC<GameViewProps> = ({
                     engineRef.current?.resetCar();
                     setIsPauseOpen(false);
                   }}
-                  className="py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-1.5 border border-white/10"
+                  className="py-2 bg-white/5 hover:bg-white/15 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border border-white/10"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
+                  <RefreshCw className="w-3.5 h-3.5 text-[#FF3B30]" />
                   <span>Reset Car</span>
                 </button>
                 <button
@@ -1488,7 +1521,7 @@ export const GameView: React.FC<GameViewProps> = ({
                     setIsPauseOpen(false);
                     setIsMpModalOpen(true);
                   }}
-                  className="py-2 bg-purple-600/30 hover:bg-purple-600/45 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-1.5 border border-purple-500/40 text-purple-200"
+                  className="py-2 bg-[#00E5FF]/15 hover:bg-[#00E5FF]/25 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border border-[#00E5FF]/40 text-[#00E5FF]"
                 >
                   <Users className="w-3.5 h-3.5" />
                   <span>Multiplayer</span>
@@ -1499,17 +1532,17 @@ export const GameView: React.FC<GameViewProps> = ({
             <div className="flex flex-col space-y-2">
               <button
                 onClick={() => setIsPauseOpen(false)}
-                className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-display font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-[#FF3B30] hover:bg-[#ff5147] text-white font-display font-bold rounded-lg text-xs uppercase tracking-wider flex items-center justify-center gap-2"
               >
-                <Play className="w-4 h-4 fill-white" /> RESUME RACE
+                <Play className="w-4 h-4 fill-white" /> Resume Race
               </button>
 
               {!isMobile && onExit && (
                 <button
                   onClick={onExit}
-                  className="w-full py-2 bg-white/5 hover:bg-rose-500/20 text-gray-300 hover:text-rose-200 border border-white/10 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                  className="w-full py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
                 >
-                  <Home className="w-3.5 h-3.5" /> EXIT TO MAIN MENU
+                  <Home className="w-3.5 h-3.5" /> Exit to Main Menu
                 </button>
               )}
             </div>
@@ -1525,45 +1558,43 @@ export const GameView: React.FC<GameViewProps> = ({
           aria-label="Pair Gyro Controller"
           className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
         >
-          <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full max-h-[94%] overflow-y-auto text-white text-center font-racing relative shadow-2xl my-auto">
+          <div className="pit-surface p-4 sm:p-6 rounded-xl border border-white/15 max-w-md w-full max-h-[94%] overflow-y-auto text-[#F4F5F7] text-center font-racing relative my-auto">
             <button
               onClick={() => setIsQrModalOpen(false)}
               aria-label="Close QR Modal"
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="text-xl font-display font-bold text-cyan-300 mb-1 flex items-center justify-center gap-2">
-              <QrCode className="w-5 h-5 text-cyan-400" /> PAIR GYRO CONTROLLER
+            <h3 className="text-xl font-display font-bold text-white mb-1 flex items-center justify-center gap-2">
+              <QrCode className="w-5 h-5 text-[#00E5FF]" /> Pair Phone Steering Wheel
             </h3>
             <p className="text-xs text-gray-400 mb-3">
-              Scan with your phone&apos;s camera (same Wi-Fi) to turn your phone into a physical tilt steering wheel!
+              Scan with your phone&apos;s camera on the same Wi-Fi network for tilt steering &amp; pedals.
             </p>
 
-            <div className="bg-white p-3.5 rounded-2xl shadow-xl flex flex-col items-center justify-center mb-3">
+            <div className="bg-white p-3 rounded-xl inline-flex items-center justify-center mb-3">
               {qrDataUrl ? (
-                <img src={qrDataUrl} alt="QR Code" className="w-52 h-52 rounded-lg select-none block" />
+                <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded select-none block" />
               ) : (
-                <div className="w-52 h-52 flex items-center justify-center text-gray-500 text-xs font-mono">
-                  Generating High-Contrast QR...
+                <div className="w-48 h-48 flex items-center justify-center text-gray-500 text-xs font-mono">
+                  Generating QR...
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between bg-cyan-950/50 border border-cyan-500/40 p-2.5 rounded-xl mb-3">
-              <span className="text-xs text-cyan-200 font-bold uppercase tracking-wider">
-                PAIRING CODE:
-              </span>
-              <span className="font-mono font-extrabold text-lg text-cyan-300 tracking-widest bg-black/80 px-3 py-0.5 rounded border border-cyan-500/50">
+            <div className="flex items-center justify-between bg-black/45 border border-white/10 px-3 py-2 rounded-lg mb-3">
+              <span className="text-xs text-gray-300 font-semibold">Pairing Code</span>
+              <span className="font-mono font-bold text-base text-[#00E5FF] tracking-widest">
                 {roomId}
               </span>
             </div>
 
-            <div className="bg-black/40 border border-white/10 rounded-lg p-2.5 mb-3 text-left">
+            <div className="bg-black/45 border border-white/10 rounded-lg p-2.5 mb-3 text-left">
               <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 mb-1">
-                <span className="flex items-center gap-1 text-cyan-400">
-                  <Wifi className="w-3 h-3" /> Controller Link:
+                <span className="flex items-center gap-1 text-[#00E5FF]">
+                  <Wifi className="w-3 h-3" /> Controller Link
                 </span>
                 <button
                   onClick={() => {
@@ -1573,10 +1604,10 @@ export const GameView: React.FC<GameViewProps> = ({
                       setTimeout(() => setCopiedLink(false), 2000);
                     }
                   }}
-                  className="flex items-center gap-1 text-cyan-300 hover:text-cyan-200 transition-colors"
+                  className="flex items-center gap-1 text-[#00E5FF] hover:underline"
                 >
                   {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedLink ? 'COPIED!' : 'COPY'}</span>
+                  <span>{copiedLink ? 'Copied' : 'Copy'}</span>
                 </button>
               </div>
               <div className="text-[11px] font-mono text-gray-300 break-all select-all bg-black/60 p-1.5 rounded">
@@ -1585,13 +1616,13 @@ export const GameView: React.FC<GameViewProps> = ({
               {httpsPort !== null && (
                 <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-white/10 text-[10px] font-mono">
                   <span className="text-gray-400">
-                    {preferHttpsQr ? 'First open: Advanced → Proceed (for Gyro)' : 'HTTP mode (Drag wheel if gyro blocked)'}
+                    {preferHttpsQr ? 'First open: Advanced -> Proceed' : 'HTTP mode (drag wheel if gyro blocked)'}
                   </span>
                   <button
                     onClick={() => setPreferHttpsQr((prev) => !prev)}
-                    className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold"
+                    className="px-2 py-0.5 rounded bg-white/10 border border-white/15 text-[#00E5FF] font-bold"
                   >
-                    {preferHttpsQr ? 'HTTPS (GYRO)' : 'HTTP'}
+                    {preferHttpsQr ? 'HTTPS' : 'HTTP'}
                   </button>
                 </div>
               )}
@@ -1599,11 +1630,11 @@ export const GameView: React.FC<GameViewProps> = ({
 
             {availableIps.length > 1 && (
               <div className="flex items-center justify-center gap-2 mb-3 text-[11px] font-mono text-gray-400">
-                <span>Wi-Fi / LAN IP:</span>
+                <span>Wi-Fi Adapter:</span>
                 <select
                   value={lanIp}
                   onChange={(e) => setLanIp(e.target.value)}
-                  className="bg-black/60 border border-cyan-500/30 rounded px-2 py-1 text-cyan-300 text-[11px] outline-none"
+                  className="bg-black/60 border border-white/15 rounded px-2 py-1 text-[#00E5FF] text-[11px] outline-none"
                 >
                   {availableIps.map((ip) => (
                     <option key={ip} value={ip}>{ip}</option>
@@ -1614,30 +1645,30 @@ export const GameView: React.FC<GameViewProps> = ({
 
             <div className="flex items-center justify-between text-xs font-mono text-gray-300 mb-4 px-1">
               <div className="flex items-center space-x-2">
-                <span className={`w-2 h-2 rounded-full ${isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                <span>{isPhoneConnected ? 'PHONE SYNCED' : 'WAITING FOR SCAN'}</span>
+                <span className={`w-2 h-2 rounded-full ${isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-[#F5A623]'}`} />
+                <span>{isPhoneConnected ? 'Phone synced' : 'Waiting for scan'}</span>
               </div>
               <a
                 href={controllerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 underline"
+                className="flex items-center gap-1 text-[11px] text-[#00E5FF] hover:underline"
               >
-                <ExternalLink className="w-3 h-3" /> Test in Tab
+                <ExternalLink className="w-3 h-3" /> Test in tab
               </a>
             </div>
 
             <button
               onClick={() => setIsQrModalOpen(false)}
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-xl font-bold uppercase text-xs tracking-wider"
+              className="w-full py-2.5 bg-[#00E5FF] hover:bg-[#33ecff] text-[#090A0D] rounded-lg font-display font-bold uppercase text-xs tracking-wider"
             >
-              RESUME RACING
+              Resume Racing
             </button>
           </div>
         </div>
       )}
 
-      {/* Multiplayer Lobby Modal (Responsive 2-Column Compact Fit for Mobile Landscape!) */}
+      {/* Multiplayer Lobby Modal */}
       {isMpModalOpen && (
         <div
           role="dialog"
@@ -1645,23 +1676,23 @@ export const GameView: React.FC<GameViewProps> = ({
           aria-label="Multiplayer Racing Lobby"
           className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto"
         >
-          <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-purple-500/40 max-w-xl w-full max-h-[94%] overflow-y-auto text-white font-racing relative shadow-2xl my-auto">
+          <div className="pit-surface p-4 sm:p-6 rounded-xl border border-white/15 max-w-xl w-full max-h-[94%] overflow-y-auto text-[#F4F5F7] font-racing relative my-auto">
             <button
               onClick={() => setIsMpModalOpen(false)}
               aria-label="Close Multiplayer Modal"
-              className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="flex items-center space-x-2 mb-1">
-              <Globe className="w-5 h-5 text-purple-400 shrink-0" />
-              <h3 className="text-lg sm:text-xl font-display font-bold text-white uppercase">
-                Multiplayer Racing Lobby
+              <Globe className="w-5 h-5 text-[#00E5FF] shrink-0" />
+              <h3 className="text-lg sm:text-xl font-display font-bold text-white">
+                Multiplayer Lobby
               </h3>
             </div>
-            <p className="text-[11px] sm:text-xs text-gray-400 mb-3 sm:mb-4">
-              Race side-by-side in real-time on the 12.5 KM Grand Circuit via P2P WebRTC.
+            <p className="text-xs text-gray-400 mb-4">
+              Race side-by-side on the 12.5 km highway circuit via WebRTC peer mesh.
             </p>
 
             <div
@@ -1669,9 +1700,9 @@ export const GameView: React.FC<GameViewProps> = ({
                 isForceRotated90 ? 'grid-cols-2 gap-2.5' : 'grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4'
               } items-start`}
             >
-              <div className="space-y-2.5 sm:space-y-3">
+              <div className="space-y-3">
                 <div>
-                  <label htmlFor="mp-username" className="text-[10px] sm:text-[11px] uppercase font-bold text-gray-400 block mb-1">
+                  <label htmlFor="mp-username" className="text-xs font-semibold text-gray-300 block mb-1">
                     Driver Name
                   </label>
                   <input
@@ -1680,22 +1711,22 @@ export const GameView: React.FC<GameViewProps> = ({
                     maxLength={16}
                     value={mpUsername}
                     onChange={(e) => setMpUsername(e.target.value)}
-                    className="w-full bg-black/50 border border-white/20 rounded-xl px-3.5 py-1.5 sm:py-2 text-sm font-display font-bold text-white tracking-wider focus:outline-none focus:border-purple-400"
+                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3.5 py-2 text-sm font-display font-bold text-white tracking-wider focus:outline-none focus:border-[#00E5FF]"
                     placeholder="Enter your racer tag"
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label htmlFor="mp-roomcode" className="text-[10px] sm:text-[11px] uppercase font-bold text-gray-400">
+                    <label htmlFor="mp-roomcode" className="text-xs font-semibold text-gray-300">
                       Room Code
                     </label>
                     <button
                       type="button"
                       onClick={() => setMpRoomCode(roomId)}
-                      className="text-[10px] text-cyan-400 hover:underline font-mono"
+                      className="text-[11px] text-[#00E5FF] hover:underline font-mono"
                     >
-                      Default ({roomId})
+                      Use {roomId}
                     </button>
                   </div>
                   <input
@@ -1704,15 +1735,15 @@ export const GameView: React.FC<GameViewProps> = ({
                     maxLength={6}
                     value={mpRoomCode}
                     onChange={(e) => setMpRoomCode(e.target.value.toUpperCase())}
-                    className="w-full bg-black/50 border border-white/20 rounded-xl px-3.5 py-2 text-base sm:text-lg font-display font-bold text-cyan-300 tracking-widest text-center focus:outline-none focus:border-cyan-400 uppercase"
+                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3.5 py-2 text-base sm:text-lg font-mono font-bold text-[#00E5FF] tracking-widest text-center focus:outline-none focus:border-[#00E5FF] uppercase"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2.5 sm:space-y-3">
+              <div className="space-y-3">
                 <div>
-                  <span className="text-[10px] sm:text-[11px] uppercase font-bold text-gray-400 block mb-1">
-                    Race Laps (Host)
+                  <span className="text-xs font-semibold text-gray-300 block mb-1">
+                    Race Laps
                   </span>
                   <div className="grid grid-cols-3 gap-2">
                     {[1, 2, 3].map((laps) => (
@@ -1720,10 +1751,10 @@ export const GameView: React.FC<GameViewProps> = ({
                         key={laps}
                         type="button"
                         onClick={() => setMpTargetLaps(laps)}
-                        className={`py-1.5 rounded-xl text-xs font-bold font-mono uppercase border transition-all ${
+                        className={`py-1.5 rounded-lg text-xs font-mono font-bold border transition-colors ${
                           mpTargetLaps === laps
-                            ? 'bg-purple-500 text-white border-purple-300 shadow-lg'
-                            : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                            ? 'bg-[#F4F5F7] text-[#090A0D] border-white'
+                            : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
                         }`}
                       >
                         {laps} Lap{laps > 1 ? 's' : ''}
@@ -1736,14 +1767,14 @@ export const GameView: React.FC<GameViewProps> = ({
                   <button
                     type="button"
                     onClick={() => startMultiplayer(true)}
-                    className="py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                    className="py-2.5 bg-[#FF3B30] hover:bg-[#ff5147] text-white font-display font-bold text-xs uppercase tracking-wider rounded-lg transition-colors active:scale-95"
                   >
                     Host Room
                   </button>
                   <button
                     type="button"
                     onClick={() => startMultiplayer(false)}
-                    className="py-2.5 sm:py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                    className="py-2.5 bg-[#00E5FF] hover:bg-[#33ecff] text-[#090A0D] font-display font-bold text-xs uppercase tracking-wider rounded-lg transition-colors active:scale-95"
                   >
                     Join Room
                   </button>
@@ -1752,17 +1783,17 @@ export const GameView: React.FC<GameViewProps> = ({
                 <button
                   type="button"
                   onClick={copyMultiplayerInvite}
-                  className="w-full py-2 bg-white/10 hover:bg-white/15 border border-cyan-500/30 text-cyan-300 rounded-xl text-[11px] font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                  className="w-full py-2 bg-white/5 hover:bg-white/10 border border-white/15 text-gray-200 rounded-lg text-xs font-mono font-semibold flex items-center justify-center gap-1.5"
                 >
-                  {copiedMpInvite ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedMpInvite ? `INVITE COPIED (${mpRoomCode})!` : `COPY INVITE (${mpRoomCode})`}</span>
+                  {copiedMpInvite ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[#00E5FF]" />}
+                  <span>{copiedMpInvite ? `Invite Copied (${mpRoomCode})` : `Copy Invite (${mpRoomCode})`}</span>
                 </button>
 
                 {isMpConnected && (
                   <button
                     type="button"
                     onClick={leaveMultiplayer}
-                    className="w-full py-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-bold uppercase tracking-wider"
+                    className="w-full py-1.5 bg-[#FF3B30]/15 hover:bg-[#FF3B30]/25 border border-[#FF3B30]/40 text-[#FF3B30] rounded-lg text-xs font-semibold"
                   >
                     Disconnect ({mpRoomCode})
                   </button>

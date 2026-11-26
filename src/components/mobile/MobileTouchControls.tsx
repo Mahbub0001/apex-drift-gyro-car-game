@@ -17,7 +17,7 @@ import {
   Sliders,
   Zap
 } from 'lucide-react';
-import { ControllerInput } from '../../types';
+import { ControllerInput, TransmissionMode } from '../../types';
 
 interface MobileTouchControlsProps {
   onInputChange: (input: Partial<ControllerInput>) => void;
@@ -27,6 +27,8 @@ interface MobileTouchControlsProps {
   onShiftDown?: () => void;
   gear?: number | string;
   shouldShiftUp?: boolean;
+  transmissionMode?: TransmissionMode;
+  onToggleTransmission?: () => void;
   onRecalibrateGyro: () => void;
   onOpenGarage?: () => void;
   onOpenPause?: () => void;
@@ -50,6 +52,8 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   onShiftDown,
   gear = 1,
   shouldShiftUp = false,
+  transmissionMode = 'auto',
+  onToggleTransmission,
   onRecalibrateGyro,
   onOpenGarage,
   onOpenPause,
@@ -212,10 +216,27 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onOpenGarage();
               }}
               aria-label="Open Car Garage"
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-[11px] text-white active:bg-cyan-500/30 transition-all shadow-lg"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-[11px] text-white active:bg-white/15 transition-colors"
             >
-              <Warehouse className="w-3.5 h-3.5 text-amber-400" />
-              <span className="font-bold tracking-wider">GARAGE</span>
+              <Warehouse className="w-3.5 h-3.5 text-[#F5A623]" />
+              <span className="font-semibold">Garage</span>
+            </button>
+          )}
+
+          {onToggleTransmission && (
+            <button
+              onClick={() => {
+                triggerHaptic(22);
+                onToggleTransmission();
+              }}
+              aria-label="Toggle Auto or Manual Gearbox"
+              className={`px-2.5 py-1.5 rounded-lg backdrop-blur-md border text-[11px] font-mono font-bold transition-colors ${
+                transmissionMode === 'auto'
+                  ? 'bg-[#00E5FF]/15 border-[#00E5FF]/55 text-[#00E5FF]'
+                  : 'bg-[#F5A623]/15 border-[#F5A623]/55 text-[#F5A623]'
+              }`}
+            >
+              {transmissionMode === 'auto' ? 'AUTO' : 'MANUAL'}
             </button>
           )}
 
@@ -230,21 +251,21 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               setTimeout(() => setShowSteerTip(false), 3000);
             }}
             aria-label="Toggle Gyro Tilt or Touch Arrows"
-            className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl backdrop-blur-md border text-[11px] font-bold transition-all shadow-lg ${
+            className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg backdrop-blur-md border text-[11px] font-semibold transition-colors ${
               steerMode === 'gyro'
-                ? 'bg-purple-950/80 border-purple-400/60 text-purple-200'
-                : 'bg-cyan-950/80 border-cyan-400/60 text-cyan-200'
+                ? 'bg-[#12141A]/85 border-[#00E5FF]/45 text-[#00E5FF]'
+                : 'bg-[#12141A]/85 border-white/25 text-white'
             }`}
           >
             {steerMode === 'gyro' ? (
               <>
-                <Smartphone className="w-3.5 h-3.5 text-purple-300" />
-                <span>GYRO</span>
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Gyro</span>
               </>
             ) : (
               <>
-                <Gamepad2 className="w-3.5 h-3.5 text-cyan-300" />
-                <span>TOUCH</span>
+                <Gamepad2 className="w-3.5 h-3.5" />
+                <span>Arrows</span>
               </>
             )}
           </button>
@@ -255,10 +276,10 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 triggerHaptic(30);
                 onRequestGyroPermission();
               }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-cyan-500 text-black font-black text-[11px] animate-pulse shadow-lg"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-[#00E5FF] text-[#090A0D] font-bold text-[11px] animate-pulse"
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>ENABLE GYRO</span>
+              <span>Enable Gyro</span>
             </button>
           )}
 
@@ -269,9 +290,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 setSteerMode('touch');
                 onSteerModeChange?.('touch');
               }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-amber-500/25 border border-amber-400/60 text-amber-200 font-bold text-[10px] shadow-lg"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-[#F5A623]/20 border border-[#F5A623]/60 text-[#F5A623] font-bold text-[10px]"
             >
-              <span>NO GYRO → TOUCH</span>
+              <span>Use Touch</span>
             </button>
           )}
 
@@ -282,29 +303,29 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onRecalibrateGyro();
               }}
               aria-label="Recalibrate Gyro Center"
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-[11px] text-cyan-300 active:bg-cyan-500/30 transition-all shadow-lg"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-[11px] text-gray-200 active:bg-white/15 transition-colors"
             >
-              <Compass className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="font-bold tracking-wider">CENTER</span>
+              <Compass className="w-3.5 h-3.5 text-[#00E5FF]" />
+              <span className="font-semibold">Zero</span>
             </button>
           )}
         </div>
 
         {/* Center Live Steering Angle Indicator */}
-        <div className="px-3 py-1 rounded-full bg-slate-950/75 backdrop-blur-md border border-white/20 text-[11px] font-mono tracking-wider text-purple-200 flex items-center space-x-1.5 shadow-md">
-          <span className="text-gray-400 uppercase text-[9px]">STEER</span>
-          <span className="font-bold">
+        <div className="hidden sm:flex px-3 py-1 rounded-md bg-[#090A0D]/80 backdrop-blur-md border border-white/15 text-[11px] font-mono tabular-nums text-gray-200 items-center space-x-1.5">
+          <span className="text-gray-400 text-[9px]">STEER</span>
+          <span className="font-bold text-[#00E5FF]">
             {steerMode === 'touch'
               ? touchSteerDirection === 'left'
                 ? '◀ LEFT'
                 : touchSteerDirection === 'right'
                 ? 'RIGHT ▶'
-                : '● CENTER'
+                : 'CENTER'
               : currentAngleDegrees === 0
-              ? '● CENTER'
+              ? '0°'
               : currentAngleDegrees > 0
-              ? `▶ +${Math.abs(currentAngleDegrees)}°`
-              : `◀ -${Math.abs(currentAngleDegrees)}°`}
+              ? `+${Math.abs(currentAngleDegrees)}°`
+              : `-${Math.abs(currentAngleDegrees)}°`}
           </span>
         </div>
 
@@ -316,9 +337,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               onCameraSwitch();
             }}
             aria-label="Switch Camera"
-            className="p-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-white active:bg-white/25 transition-all shadow-lg"
+            className="p-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-white active:bg-white/20 transition-colors"
           >
-            <Camera className="w-4 h-4 text-cyan-300" />
+            <Camera className="w-4 h-4 text-[#00E5FF]" />
           </button>
 
           <button
@@ -327,9 +348,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               onResetCar();
             }}
             aria-label="Reset Car on Track"
-            className="p-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-white active:bg-rose-500/30 transition-all shadow-lg"
+            className="p-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-white active:bg-[#FF3B30]/30 transition-colors"
           >
-            <RefreshCw className="w-4 h-4 text-rose-300" />
+            <RefreshCw className="w-4 h-4 text-[#FF3B30]" />
           </button>
 
           {onToggleMute && (
@@ -339,16 +360,16 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onToggleMute();
               }}
               aria-label={isMuted ? 'Unmute Audio' : 'Mute Audio'}
-              className="p-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-white active:bg-white/25 transition-all shadow-lg"
+              className="p-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-white active:bg-white/20 transition-colors"
             >
-              {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+              {isMuted ? <VolumeX className="w-4 h-4 text-[#FF3B30]" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
             </button>
           )}
 
           <button
             onClick={toggleFullscreen}
             aria-label="Toggle Fullscreen"
-            className="p-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-white active:bg-white/25 transition-all shadow-lg"
+            className="p-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-white active:bg-white/20 transition-colors"
           >
             <Maximize className="w-4 h-4 text-gray-200" />
           </button>
@@ -360,7 +381,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onOpenPause();
               }}
               aria-label="Open Settings & Multiplayer Menu"
-              className="p-1.5 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/25 text-cyan-300 active:bg-white/25 transition-all shadow-lg"
+              className="p-1.5 rounded-lg bg-[#090A0D]/80 backdrop-blur-md border border-white/20 text-[#00E5FF] active:bg-white/20 transition-colors"
             >
               <Sliders className="w-4 h-4" />
             </button>
@@ -373,7 +394,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onSwitchToControllerMode();
               }}
               aria-label="Switch to PC Controller Mode"
-              className="p-1.5 rounded-xl bg-cyan-950/80 backdrop-blur-md border border-cyan-400/50 text-cyan-300 active:bg-cyan-500/40 transition-all shadow-lg"
+              className="p-1.5 rounded-lg bg-[#00E5FF]/15 backdrop-blur-md border border-[#00E5FF]/45 text-[#00E5FF] active:bg-[#00E5FF]/35 transition-colors"
               title="Pair with PC"
             >
               <Gamepad2 className="w-4 h-4" />
@@ -385,17 +406,21 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
       {/* Transient Steering Tip */}
       {showSteerTip && (
         <div className="self-center pointer-events-none mt-1">
-          <span className="text-[10px] font-mono tracking-widest text-cyan-200 uppercase bg-slate-950/70 px-3 py-1 rounded-full backdrop-blur-md border border-cyan-500/30 shadow">
+          <span className="text-[11px] font-medium text-white bg-[#090A0D]/85 px-3 py-1 rounded-md backdrop-blur-md border border-white/15">
             {steerMode === 'gyro'
-              ? 'TILT TO STEER • TAP GEAR + TO UPSHIFT (AUTO DOWN)'
-              : 'ARROWS TO STEER • TAP GEAR + TO UPSHIFT (AUTO DOWN)'}
+              ? transmissionMode === 'auto'
+                ? 'Tilt phone to steer • Slide pedals for throttle & brake'
+                : 'Tilt phone to steer • Tap Gear + / - paddles to shift'
+              : transmissionMode === 'auto'
+              ? 'Use left/right arrows to steer • Slide pedals to modulate speed'
+              : 'Use arrows to steer • Tap Gear + / - paddles to shift'}
           </span>
         </div>
       )}
 
-      {/* Bottom Pedals + Integrated Manual Paddle Shifters Cockpit */}
+      {/* Bottom Pedals + Contextual Paddles Cockpit */}
       <div className="flex items-end justify-between pointer-events-none pb-1 px-0.5 mt-auto">
-        {/* Left: Optional Touch Arrows + Brake + (Gear Down Paddle stacked directly above Slide Drift) */}
+        {/* Left: Optional Touch Arrows + Brake + Drift (+ Gear - when Manual) */}
         <div className="flex items-end space-x-1.5 md:space-x-2 pointer-events-auto">
           {steerMode === 'touch' && (
             <div className="flex items-center space-x-1 mr-0.5">
@@ -408,14 +433,13 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onPointerUp={() => handleTouchSteer('center')}
                 onPointerCancel={() => handleTouchSteer('center')}
                 aria-label="Steer Left"
-                className={`w-10 md:w-14 h-20 md:h-24 rounded-2xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 shadow-xl touch-none ${
+                className={`w-11 md:w-14 h-20 md:h-24 rounded-xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 touch-none ${
                   touchSteerDirection === 'left'
-                    ? 'bg-cyan-500/70 border-cyan-300 shadow-[0_0_25px_#00f2fe]'
-                    : 'bg-slate-950/55 border-white/25 text-white'
+                    ? 'bg-[#00E5FF]/75 border-[#00E5FF] text-[#090A0D]'
+                    : 'bg-[#090A0D]/70 border-white/20 text-white'
                 }`}
               >
-                <ChevronLeft className="w-6 h-6 md:w-7 md:h-7 text-cyan-300" />
-                <span className="text-[8px] md:text-[9px] font-bold">LEFT</span>
+                <ChevronLeft className="w-6 h-6 md:w-7 md:h-7" />
               </button>
 
               <button
@@ -427,19 +451,18 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 onPointerUp={() => handleTouchSteer('center')}
                 onPointerCancel={() => handleTouchSteer('center')}
                 aria-label="Steer Right"
-                className={`w-10 md:w-14 h-20 md:h-24 rounded-2xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 shadow-xl touch-none ${
+                className={`w-11 md:w-14 h-20 md:h-24 rounded-xl border flex flex-col items-center justify-center backdrop-blur-md transition-all active:scale-95 touch-none ${
                   touchSteerDirection === 'right'
-                    ? 'bg-cyan-500/70 border-cyan-300 shadow-[0_0_25px_#00f2fe]'
-                    : 'bg-slate-950/55 border-white/25 text-white'
+                    ? 'bg-[#00E5FF]/75 border-[#00E5FF] text-[#090A0D]'
+                    : 'bg-[#090A0D]/70 border-white/20 text-white'
                 }`}
               >
-                <ChevronRight className="w-6 h-6 md:w-7 md:h-7 text-cyan-300" />
-                <span className="text-[8px] md:text-[9px] font-bold">RIGHT</span>
+                <ChevronRight className="w-6 h-6 md:w-7 md:h-7" />
               </button>
             </div>
           )}
 
-          {/* Brake Pedal */}
+          {/* Tactile Brake Pedal */}
           <div
             ref={brakeContainerRef}
             onPointerDown={handleBrakePointerDown}
@@ -450,33 +473,32 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             aria-label="Brake Pedal"
             className={`${
               steerMode === 'touch' ? 'w-14 md:w-20 lg:w-24' : 'w-[72px] md:w-24 lg:w-28'
-            } h-28 md:h-36 lg:h-40 rounded-3xl relative overflow-hidden flex flex-col justify-end p-1.5 md:p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
+            } h-28 md:h-36 lg:h-40 rounded-xl relative overflow-hidden flex flex-col justify-end p-1 border transition-colors cursor-pointer backdrop-blur-md touch-none pedal-tread ${
               brake > 0.05
-                ? 'bg-rose-950/60 border-rose-400 shadow-[0_0_30px_rgba(244,63,94,0.55)]'
-                : 'bg-slate-950/40 border-white/25 hover:border-white/40'
+                ? 'bg-[#FF3B30]/20 border-[#FF3B30]'
+                : 'bg-[#090A0D]/60 border-white/25'
             }`}
           >
             <div
-              className="w-full bg-gradient-to-t from-rose-600/85 via-rose-500/60 to-amber-400/40 rounded-2xl transition-all duration-75"
-              style={{ height: `${Math.max(10, Math.round(brake * 100))}%` }}
+              className="w-full bg-[#FF3B30]/80 rounded-lg transition-all duration-75"
+              style={{ height: `${Math.max(8, Math.round(brake * 100))}%` }}
             />
-            <div className="absolute inset-0 flex flex-col items-center justify-between py-3 pointer-events-none">
-              <div className="w-8 h-1 rounded-full bg-white/30" />
+            <div className="absolute inset-0 flex flex-col items-center justify-between py-2.5 pointer-events-none">
+              <div className="w-7 h-1 rounded-sm bg-white/25" />
               <div className="flex flex-col items-center">
-                <span className="text-xs uppercase font-black tracking-widest text-white drop-shadow">
-                  BRAKE
+                <span className="text-[11px] uppercase font-bold tracking-widest text-white">
+                  Brake
                 </span>
-                <span className="text-base font-display font-black text-rose-300 drop-shadow">
+                <span className="text-sm font-mono tabular-nums font-bold text-[#FF3B30]">
                   {Math.round(brake * 100)}%
                 </span>
               </div>
-              <div className="w-8 h-1 rounded-full bg-white/30" />
+              <div className="w-7 h-1 rounded-sm bg-white/25" />
             </div>
           </div>
 
-          {/* Left Column: GEAR DOWN Paddle stacked cleanly above SLIDE DRIFT */}
           <div className="flex flex-col items-center space-y-1.5">
-            {onShiftDown && (
+            {transmissionMode === 'manual' && onShiftDown && (
               <button
                 onPointerDown={(e) => {
                   e.preventDefault();
@@ -487,14 +509,14 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 aria-label="Shift Gear Down"
                 className={`${
                   steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
-                } h-11 md:h-13 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border border-amber-400/50 bg-slate-950/65 hover:bg-amber-500/25 active:bg-amber-500/45 text-amber-300 flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none`}
+                } h-11 md:h-12 rounded-xl font-display font-bold uppercase transition-transform active:scale-95 border border-[#F5A623]/60 bg-[#090A0D]/80 text-[#F5A623] flex flex-col items-center justify-center backdrop-blur-md touch-none`}
               >
                 <div className="flex items-center space-x-0.5 leading-none">
-                  <span className="text-[9px] md:text-[10px] font-mono">GEAR</span>
-                  <ChevronDown className="w-3 h-3 md:w-3.5 md:h-3.5 text-amber-400" />
+                  <span className="text-[10px] font-mono">G-</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[9px] md:text-[10px] font-mono text-gray-300 leading-tight">
-                  {gear === 'N' ? '→ R' : gear === 1 ? '→ N/R' : 'AUTO ▼'}
+                <span className="text-[9px] font-mono text-gray-300 leading-tight">
+                  {gear === 'N' || gear === 1 ? 'N/R' : 'DOWN'}
                 </span>
               </button>
             )}
@@ -517,22 +539,23 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               }}
               className={`${
                 steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
-              } h-16 md:h-20 rounded-2xl font-display font-black text-[11px] md:text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1 ${
+              } ${
+                transmissionMode === 'manual' ? 'h-16 md:h-20' : 'h-24 md:h-28'
+              } rounded-xl font-display font-bold text-xs uppercase tracking-wider transition-all active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md touch-none px-1 ${
                 handbrake
-                  ? 'bg-rose-600/80 text-white shadow-[0_0_28px_rgba(244,63,94,0.7)] border-rose-300'
-                  : 'bg-slate-950/45 text-rose-200 border-rose-500/45 active:bg-rose-500/50'
+                  ? 'bg-[#FF3B30] text-white border-white/60'
+                  : 'bg-[#090A0D]/65 text-gray-200 border-[#FF3B30]/50'
               }`}
             >
-              <span className="text-[8px] md:text-[9px] text-rose-300 font-mono">SLIDE</span>
-              <span className="text-[11px] md:text-xs tracking-wider font-black leading-tight">DRIFT</span>
+              <span className="text-[11px] md:text-xs font-bold leading-tight">Drift</span>
             </button>
           </div>
         </div>
 
-        {/* Right: (Gear Up Paddle stacked directly above NITRO) + Gas Pedal */}
+        {/* Right: (Gear + when Manual) + Nitro + Gas Pedal */}
         <div className="flex items-end space-x-1.5 md:space-x-2 pointer-events-auto">
           <div className="flex flex-col items-center space-y-1.5">
-            {onShiftUp && (
+            {transmissionMode === 'manual' && onShiftUp && (
               <button
                 onPointerDown={(e) => {
                   e.preventDefault();
@@ -543,18 +566,18 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
                 aria-label="Shift Gear Up"
                 className={`${
                   steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
-                } h-11 md:h-13 rounded-2xl font-display font-black uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none ${
+                } h-11 md:h-12 rounded-xl font-display font-bold uppercase transition-transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md touch-none ${
                   shouldShiftUp
-                    ? 'bg-rose-600/85 border-cyan-300 text-white shadow-[0_0_24px_rgba(0,242,254,0.85)] animate-pulse'
-                    : 'bg-slate-950/65 border-cyan-400/50 text-cyan-300 hover:bg-cyan-500/25 active:bg-cyan-500/45'
+                    ? 'bg-[#FF3B30] border-white text-white animate-pulse'
+                    : 'bg-[#090A0D]/80 border-[#00E5FF]/60 text-[#00E5FF]'
                 }`}
               >
                 <div className="flex items-center space-x-0.5 leading-none">
-                  <span className="text-[9px] md:text-[10px] font-mono">GEAR</span>
-                  <ChevronUp className="w-3 h-3 md:w-3.5 md:h-3.5 text-cyan-300" />
+                  <span className="text-[10px] font-mono">G+</span>
+                  <ChevronUp className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[9px] md:text-[10px] font-mono text-gray-200 leading-tight">
-                  {shouldShiftUp ? 'SHIFT NOW!' : 'SHIFT +'}
+                <span className="text-[9px] font-mono leading-tight">
+                  {shouldShiftUp ? 'SHIFT' : 'UP'}
                 </span>
               </button>
             )}
@@ -577,18 +600,20 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               }}
               className={`${
                 steerMode === 'touch' ? 'w-12 md:w-16 lg:w-20' : 'w-14 md:w-[72px] lg:w-20'
-              } h-16 md:h-20 rounded-2xl font-display font-black text-[11px] md:text-xs uppercase tracking-wider transition-all transform active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md shadow-xl touch-none px-1 ${
+              } ${
+                transmissionMode === 'manual' ? 'h-16 md:h-20' : 'h-24 md:h-28'
+              } rounded-xl font-display font-bold text-xs uppercase tracking-wider transition-all active:scale-95 border flex flex-col items-center justify-center backdrop-blur-md touch-none px-1 ${
                 nitro
-                  ? 'bg-gradient-to-r from-purple-600/85 to-cyan-500/85 text-white shadow-[0_0_30px_rgba(168,85,247,0.8)] border-cyan-300'
-                  : 'bg-slate-950/45 text-cyan-200 border-purple-500/45 active:bg-purple-600/50'
+                  ? 'bg-[#00E5FF] text-[#090A0D] border-white'
+                  : 'bg-[#090A0D]/65 text-[#00E5FF] border-[#00E5FF]/50'
               }`}
             >
-              <Flame className="w-4 h-4 md:w-5 md:h-5 text-cyan-300 animate-pulse mb-0.5" />
-              <span className="text-[11px] md:text-xs tracking-wider font-black leading-tight">NITRO</span>
+              <Flame className="w-4 h-4 md:w-5 md:h-5 mb-0.5" />
+              <span className="text-[11px] md:text-xs font-bold leading-tight">Nitro</span>
             </button>
           </div>
 
-          {/* Gas Pedal */}
+          {/* Tactile Gas Pedal */}
           <div
             ref={throttleContainerRef}
             onPointerDown={handleThrottlePointerDown}
@@ -599,27 +624,27 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             aria-label="Gas Accelerator Pedal"
             className={`${
               steerMode === 'touch' ? 'w-14 md:w-20 lg:w-24' : 'w-[72px] md:w-24 lg:w-28'
-            } h-28 md:h-36 lg:h-40 rounded-3xl relative overflow-hidden flex flex-col justify-end p-1.5 md:p-2 border transition-all duration-100 cursor-pointer shadow-2xl backdrop-blur-md touch-none ${
+            } h-28 md:h-36 lg:h-40 rounded-xl relative overflow-hidden flex flex-col justify-end p-1 border transition-colors cursor-pointer backdrop-blur-md touch-none pedal-tread ${
               throttle > 0.05
-                ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_30px_rgba(0,242,254,0.55)]'
-                : 'bg-slate-950/40 border-white/25 hover:border-white/40'
+                ? 'bg-[#00E5FF]/20 border-[#00E5FF]'
+                : 'bg-[#090A0D]/60 border-white/25'
             }`}
           >
             <div
-              className="w-full bg-gradient-to-t from-cyan-600/85 via-cyan-400/60 to-emerald-400/40 rounded-2xl transition-all duration-75"
-              style={{ height: `${Math.max(10, Math.round(throttle * 100))}%` }}
+              className="w-full bg-[#00E5FF]/80 rounded-lg transition-all duration-75"
+              style={{ height: `${Math.max(8, Math.round(throttle * 100))}%` }}
             />
-            <div className="absolute inset-0 flex flex-col items-center justify-between py-3 pointer-events-none">
-              <div className="w-8 h-1 rounded-full bg-white/30" />
+            <div className="absolute inset-0 flex flex-col items-center justify-between py-2.5 pointer-events-none">
+              <div className="w-7 h-1 rounded-sm bg-white/25" />
               <div className="flex flex-col items-center">
-                <span className="text-xs uppercase font-black tracking-widest text-white drop-shadow">
-                  GAS
+                <span className="text-[11px] uppercase font-bold tracking-widest text-white">
+                  Gas
                 </span>
-                <span className="text-base font-display font-black text-cyan-200 drop-shadow">
+                <span className="text-sm font-mono tabular-nums font-bold text-[#00E5FF]">
                   {Math.round(throttle * 100)}%
                 </span>
               </div>
-              <div className="w-8 h-1 rounded-full bg-white/30" />
+              <div className="w-7 h-1 rounded-sm bg-white/25" />
             </div>
           </div>
         </div>

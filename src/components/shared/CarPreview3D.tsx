@@ -12,6 +12,8 @@ interface CarPreview3DProps {
   onRevClick?: () => void;
   className?: string;
   showControls?: boolean;
+  controlsAlign?: 'top-right' | 'bottom-right';
+  targetOffsetX?: number;
 }
 
 type CameraAnglePreset = 'hero' | 'side' | 'rear';
@@ -21,7 +23,9 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
   isRevving = false,
   onRevClick,
   className = '',
-  showControls = true
+  showControls = true,
+  controlsAlign = 'top-right',
+  targetOffsetX = 0
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,7 +109,7 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 60);
-    camera.position.set(3.2, 1.48, 3.85);
+    camera.position.set(3.2 + targetOffsetX, 1.48, 3.85);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
@@ -121,7 +125,7 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const controls = new OrbitControls(camera, canvas);
-    controls.target.set(0, 0.48, 0);
+    controls.target.set(targetOffsetX, 0.48, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.enablePan = false;
@@ -330,15 +334,22 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     if (!camera || !controls) return;
 
     if (preset === 'hero') {
-      camera.position.set(3.2, 1.48, 3.85);
+      camera.position.set(3.2 + targetOffsetX, 1.48, 3.85);
     } else if (preset === 'side') {
-      camera.position.set(4.9, 1.15, 0.05);
+      camera.position.set(4.9 + targetOffsetX, 1.15, 0.05);
     } else {
-      camera.position.set(-2.9, 1.52, -4.0);
+      camera.position.set(-2.9 + targetOffsetX, 1.52, -4.0);
     }
-    controls.target.set(0, 0.48, 0);
+    controls.target.set(targetOffsetX, 0.48, 0);
     controls.update();
   };
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    controls.target.set(targetOffsetX, 0.48, 0);
+    controls.update();
+  }, [targetOffsetX]);
 
   return (
     <div
@@ -350,7 +361,7 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
       {/* Loading Indicator */}
       {!modelLoaded && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-xs font-mono uppercase tracking-widest text-cyan-400 animate-pulse bg-black/60 px-3 py-1.5 rounded-lg border border-cyan-500/30">
+          <span className="text-xs font-mono uppercase tracking-widest text-[#00E5FF] animate-pulse bg-[#090A0D]/80 px-3 py-1.5 rounded-lg border border-white/15">
             Loading 3D Chassis...
           </span>
         </div>
@@ -359,15 +370,15 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
       {/* Interactive HUD Hints & Quick Angles */}
       {showControls && (
         <>
-          <div className="absolute top-3 left-3 flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/15 pointer-events-none">
-            <Move3d className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-[10px] font-mono uppercase tracking-wider text-gray-200">
-              360° Interactive • Drag / Zoom
+          <div className="hidden sm:flex absolute bottom-3 left-3 items-center space-x-1.5 px-2.5 py-1 rounded-md bg-[#090A0D]/75 backdrop-blur-md border border-white/15 pointer-events-none">
+            <Move3d className="w-3.5 h-3.5 text-[#00E5FF]" />
+            <span className="text-[11px] font-racing text-gray-200">
+              Drag to orbit 360° • Scroll to zoom
             </span>
           </div>
 
           <div
-            className="absolute top-3 right-3 flex items-center space-x-1.5"
+            className={`absolute ${controlsAlign === 'bottom-right' ? 'bottom-3 right-3' : 'top-3 right-3'} flex items-center space-x-1.5`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {(['hero', 'side', 'rear'] as const).map((preset) => (
@@ -378,7 +389,7 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
                   e.stopPropagation();
                   setCameraPreset(preset);
                 }}
-                className="px-2 py-1 rounded-lg bg-black/60 hover:bg-cyan-500/25 border border-white/15 text-[10px] font-mono font-bold uppercase text-gray-200 hover:text-cyan-300 transition-colors"
+                className="px-2.5 py-1 rounded-md bg-[#12141A]/85 hover:bg-[#1e232e] border border-white/15 text-[11px] font-racing font-semibold text-gray-200 hover:text-[#00E5FF] transition-colors"
               >
                 {preset === 'hero' ? 'Front' : preset === 'side' ? 'Side' : 'Rear'}
               </button>
@@ -392,10 +403,10 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
               }}
               aria-label="Toggle 360 Auto Spin"
               title="Toggle Auto-Rotate"
-              className={`p-1.5 rounded-lg border transition-colors ${
+              className={`p-1.5 rounded-md border transition-colors ${
                 autoSpin
-                  ? 'bg-cyan-500/25 border-cyan-400/50 text-cyan-300'
-                  : 'bg-black/60 border-white/15 text-gray-400 hover:text-white'
+                  ? 'bg-[#00E5FF]/15 border-[#00E5FF]/50 text-[#00E5FF]'
+                  : 'bg-[#12141A]/85 border-white/15 text-gray-400 hover:text-white'
               }`}
             >
               <RotateCw className={`w-3.5 h-3.5 ${autoSpin ? 'animate-spin-slow' : ''}`} />
@@ -408,10 +419,10 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
                   e.stopPropagation();
                   onRevClick();
                 }}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg border text-[10px] font-mono font-bold uppercase transition-all ${
+                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md border text-[11px] font-racing font-bold transition-all ${
                   isRevving
-                    ? 'bg-rose-600 border-rose-300 text-white animate-pulse'
-                    : 'bg-amber-500/20 hover:bg-amber-500/35 border-amber-400/50 text-amber-300'
+                    ? 'bg-[#FF3B30] border-[#FF3B30] text-white'
+                    : 'bg-[#F5A623]/15 hover:bg-[#F5A623]/25 border-[#F5A623]/50 text-[#F5A623]'
                 }`}
               >
                 <Flame className="w-3 h-3" />

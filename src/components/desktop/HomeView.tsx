@@ -1,21 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
-import { SuperCarConfig, SUPER_CARS, GameSettings } from '../../types';
+import { SuperCarConfig, SUPER_CARS, GameSettings, TransmissionMode } from '../../types';
 import { SoundEngine } from '../../game/audio/SoundEngine';
 import { CarPreview3D } from '../shared/CarPreview3D';
+import { loadStoredRecords } from '../../utils/records';
 import {
   Play,
   Warehouse,
   Gamepad2,
   Users,
   Settings as SettingsIcon,
-  QrCode,
   Volume2,
   VolumeX,
-  Gauge,
-  Zap,
-  Award,
-  Flame,
   X,
   ChevronRight,
   Smartphone,
@@ -23,8 +19,8 @@ import {
   Copy,
   Check,
   Wifi,
-  Radio,
-  Sliders
+  Sliders,
+  Trophy
 } from 'lucide-react';
 
 interface HomeViewProps {
@@ -37,6 +33,14 @@ interface HomeViewProps {
   onOpenMultiplayer: () => void;
   settings: GameSettings;
   onUpdateSettings: (partial: Partial<GameSettings>) => void;
+}
+
+function formatBestLap(ms: number): string {
+  const totalSec = Math.max(0, ms / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = Math.floor(totalSec % 60);
+  const hundredths = Math.floor((ms % 1000) / 10);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -53,6 +57,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [activeModal, setActiveModal] = useState<'none' | 'controls' | 'settings' | 'gyro'>('none');
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [isHomeRevving, setIsHomeRevving] = useState<boolean>(false);
+  const [records] = useState(() => loadStoredRecords());
   const soundRef = useRef<SoundEngine | null>(null);
 
   useEffect(() => {
@@ -92,6 +97,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
     soundRef.current?.playRevPulse();
     setIsHomeRevving(true);
     setTimeout(() => setIsHomeRevving(false), 900);
+  };
+
+  const handleTransmissionChange = (mode: TransmissionMode) => {
+    playClick();
+    onUpdateSettings({ transmissionMode: mode });
   };
 
   useEffect(() => {
@@ -153,436 +163,424 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }).then(setQrDataUrl);
   }, [roomId, lanIp, httpsPort, preferHttpsQr]);
 
-  return (
-    <div className="relative w-screen h-[100dvh] overflow-y-auto xl:overflow-hidden bg-[#06080d] text-white font-racing select-none flex flex-col justify-between">
-      {/* Subtle Ambient Showroom Backdrop */}
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,rgba(0,242,254,0.08),transparent_55%),radial-gradient(ellipse_at_bottom_left,rgba(138,43,226,0.08),transparent_55%)]" />
+  const carPaintCss = `#${selectedCar.bodyColorHex.toString(16).padStart(6, '0')}`;
+  const accelZeroToHundred = (100 / 3.6 / (selectedCar.accelerationRate * 1.18)).toFixed(1);
 
-      {/* TOP HEADER NAVIGATION BAR */}
-      <header className="relative z-20 flex items-center justify-between px-6 lg:px-8 py-3.5 border-b border-white/10 backdrop-blur-md bg-black/35 shrink-0">
-        <div className="flex items-center space-x-3.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 border border-cyan-300/40">
-            <Flame className="w-5 h-5 text-white" />
+  return (
+    <div className="relative w-screen h-[100dvh] overflow-y-auto lg:overflow-hidden bg-[#090A0D] text-[#F4F5F7] font-racing select-none flex flex-col justify-between">
+      {/* FULL-BLEED INTERACTIVE 3D HERO STAGE */}
+      <div className="fixed inset-0 z-0">
+        <CarPreview3D
+          car={selectedCar}
+          isRevving={isHomeRevving}
+          onRevClick={handleHomeRev}
+          showControls={true}
+          controlsAlign="bottom-right"
+          targetOffsetX={-1.05}
+        />
+      </div>
+
+      {/* Directional architectural carbon vignette so left cockpit rail has crisp legibility */}
+      <div
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          background:
+            'linear-gradient(90deg, rgba(9,10,13,0.94) 0%, rgba(9,10,13,0.78) 38%, rgba(9,10,13,0.28) 64%, rgba(9,10,13,0.12) 100%), linear-gradient(180deg, rgba(9,10,13,0.72) 0%, transparent 18%, transparent 82%, rgba(9,10,13,0.8) 100%)'
+        }}
+      />
+
+      {/* TOP PIT-WALL HEADER */}
+      <header className="relative z-20 flex items-center justify-between px-5 lg:px-8 py-3 border-b border-white/10 bg-[#090A0D]/75 backdrop-blur-md pointer-events-auto shrink-0">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2.5">
+            <span className="w-1.5 h-6 bg-[#FF3B30] rounded-sm block" />
+            <h1 className="text-xl lg:text-2xl font-display font-bold tracking-wider text-[#F4F5F7]">
+              APEX <span className="text-[#00E5FF]">DRIFT</span>
+            </h1>
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl lg:text-2xl font-display font-extrabold tracking-wider text-white">
-                APEX<span className="text-cyan-400">DRIFT</span>
-              </h1>
-              <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                MANUAL UP • AUTO DOWN
-              </span>
-            </div>
-            <p className="text-[11px] font-mono text-gray-400 tracking-wider hidden sm:block">
-              12.5 KM GRAND WORLD CIRCUIT • 4-LANE HIGHWAY • 3D WEBGL2 & GYRO
-            </p>
+
+          <div className="hidden md:flex items-center space-x-3 pl-4 border-l border-white/10 text-xs text-gray-300">
+            <span>12.5 km Coastal &amp; Alpine Circuit</span>
+            {records.bestLapMs !== null && (
+              <>
+                <span className="text-white/20">/</span>
+                <span className="flex items-center gap-1.5 text-[#F5A623] font-mono tabular-nums font-bold">
+                  <Trophy className="w-3.5 h-3.5" />
+                  Best Lap {formatBestLap(records.bestLapMs)}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        <nav className="flex items-center space-x-2.5" aria-label="Primary actions">
+        <nav className="flex items-center space-x-2" aria-label="Primary actions">
           <button
+            type="button"
             onClick={() => {
               playClick();
               setActiveModal('gyro');
             }}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all ${
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
               isPhoneConnected
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-lg shadow-emerald-500/20'
-                : 'glass-panel text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/20 shadow-lg shadow-cyan-500/10'
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/45'
+                : 'bg-[#12141A]/90 text-gray-200 border-white/15 hover:border-[#00E5FF]/50 hover:text-[#00E5FF]'
             }`}
           >
-            <Smartphone className="w-4 h-4 text-cyan-400" />
-            <span>{isPhoneConnected ? 'Gyro Connected' : 'Pair Phone Gyro'}</span>
-            <span className={`w-2 h-2 rounded-full ${isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-cyan-400'}`} />
+            <Smartphone className="w-3.5 h-3.5 text-[#00E5FF]" />
+            <span>{isPhoneConnected ? 'Phone Wheel Synced' : 'Pair Phone Wheel'}</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isPhoneConnected ? 'bg-emerald-400 animate-pulse' : 'bg-[#00E5FF]'
+              }`}
+            />
           </button>
 
           <button
+            type="button"
             onClick={() => {
               playClick();
               setActiveModal('controls');
             }}
-            className="flex items-center space-x-2 glass-panel px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-gray-300 hover:text-white border border-white/10 hover:border-white/30 transition-all"
+            className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#12141A]/90 text-xs font-semibold text-gray-300 hover:text-white border border-white/15 hover:border-white/30 transition-colors"
           >
-            <Gamepad2 className="w-4 h-4 text-gray-400" />
+            <Gamepad2 className="w-3.5 h-3.5 text-gray-400" />
             <span>Controls</span>
           </button>
 
           <button
+            type="button"
             onClick={() => {
               playClick();
               setActiveModal('settings');
             }}
-            aria-label="Gameplay and graphics settings"
-            className="p-2.5 glass-panel rounded-xl text-gray-400 hover:text-white border border-white/10 hover:border-white/30 transition-all"
+            aria-label="Settings"
+            className="p-2 rounded-lg bg-[#12141A]/90 text-gray-300 hover:text-white border border-white/15 hover:border-white/30 transition-colors"
             title="Settings"
           >
             <SettingsIcon className="w-4 h-4" />
           </button>
 
           <button
+            type="button"
             onClick={handleToggleMute}
             aria-label={settings.isMuted ? 'Unmute audio' : 'Mute audio'}
-            className="p-2.5 glass-panel rounded-xl text-gray-400 hover:text-white border border-white/10 hover:border-white/30 transition-all"
-            title={settings.isMuted ? 'Unmute Audio' : 'Mute Audio'}
+            className="p-2 rounded-lg bg-[#12141A]/90 text-gray-300 hover:text-white border border-white/15 hover:border-white/30 transition-colors"
+            title={settings.isMuted ? 'Unmute audio' : 'Mute audio'}
           >
             {settings.isMuted ? (
-              <VolumeX className="w-4 h-4 text-rose-400" />
+              <VolumeX className="w-4 h-4 text-[#FF3B30]" />
             ) : (
-              <Volume2 className="w-4 h-4 text-cyan-400" />
+              <Volume2 className="w-4 h-4 text-[#00E5FF]" />
             )}
           </button>
         </nav>
       </header>
 
-      {/* MAIN BODY: 2-COLUMN HERO STAGE */}
-      <main className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 px-6 lg:px-8 py-4 items-center max-w-7xl mx-auto w-full min-h-0">
-        {/* LEFT COLUMN */}
-        <div className="lg:col-span-5 flex flex-col justify-center space-y-3">
-          <div className="mb-1">
-            <span className="text-[11px] uppercase font-bold text-cyan-400 tracking-widest flex items-center gap-1.5 mb-1">
-              <Radio className="w-3.5 h-3.5 animate-pulse text-cyan-400" /> SEASON 1 CHAMPIONSHIP
-            </span>
-            <h2 className="text-3xl lg:text-4xl xl:text-5xl font-display font-black tracking-tight leading-none text-white drop-shadow-md">
-              THE HIGHWAY <br />
-              <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-                REVOLUTION
-              </span>
-            </h2>
-            <p className="text-xs text-gray-400 mt-1.5 font-mono leading-relaxed">
-              Drive interactive 3D hypercars across a 12.5 KM Riviera coastline, alpine pass & neon tunnel with manual upshifts, speed-based auto downshifts & 60Hz phone gyro steering.
-            </p>
-          </div>
-
-          <button
-            onClick={() => {
-              playClick();
-              onStartRacing();
-            }}
-            onMouseEnter={playHover}
-            className="group relative flex items-center justify-between px-5 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 bg-[length:200%_auto] hover:bg-right transition-all duration-500 shadow-xl shadow-cyan-500/25 border border-cyan-300/40 text-left active:scale-[0.98]"
-          >
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-100 font-bold block mb-0.5">
-                GRAND WORLD CIRCUIT • SEMI-AUTO GEARBOX
-              </span>
-              <span className="text-xl lg:text-2xl font-display font-black uppercase tracking-wider text-white flex items-center gap-2">
-                ENTER RACE TRACK{' '}
-                <Play className="w-5 h-5 fill-white text-white group-hover:translate-x-1.5 transition-transform" />
-              </span>
-            </div>
-            <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-black/40 border border-white/20 text-cyan-200 shrink-0">
-              PRESS ENTER
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
-              playClick();
-              onOpenGarage();
-            }}
-            onMouseEnter={playHover}
-            className="group flex items-center justify-between px-4 py-3 rounded-xl glass-panel border border-white/10 hover:border-amber-500/40 hover:bg-amber-500/10 transition-all text-left active:scale-[0.99]"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Warehouse className="w-4 h-4" />
-              </div>
+      {/* MAIN PIT-WALL CONTROL RAIL (Left overlay; right side stays open for 3D turntable interaction) */}
+      <main className="relative z-10 flex-1 flex items-center px-5 lg:px-8 py-4 pointer-events-none min-h-0">
+        <div className="w-full max-w-[460px] flex flex-col space-y-4 pointer-events-auto">
+          {/* Active Vehicle Identification & Selector */}
+          <section className="pit-surface rounded-xl p-4 lg:p-5 border-l-4" style={{ borderLeftColor: carPaintCss }}>
+            <div className="flex items-start justify-between gap-2 mb-3">
               <div>
-                <span className="text-sm font-display font-bold uppercase tracking-wider text-white block">
-                  3D HYPERCAR SHOWROOM
-                </span>
-                <span className="text-[11px] font-mono text-gray-400">
-                  Inspect, paint & rev 5 3D competition supercars
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-          </button>
-
-          <button
-            onClick={() => {
-              playClick();
-              onOpenMultiplayer();
-            }}
-            onMouseEnter={playHover}
-            className="group flex items-center justify-between px-4 py-3 rounded-xl glass-panel border border-white/10 hover:border-purple-500/40 hover:bg-purple-500/10 transition-all text-left active:scale-[0.99]"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                <Users className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-sm font-display font-bold uppercase tracking-wider text-white block">
-                  MULTIPLAYER ROOMS
-                </span>
-                <span className="text-[11px] font-mono text-gray-400">
-                  Join or host private races via P2P WebRTC
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
-          </button>
-
-          <button
-            onClick={() => {
-              playClick();
-              setActiveModal('gyro');
-            }}
-            onMouseEnter={playHover}
-            className="group flex items-center justify-between px-4 py-3 rounded-xl glass-panel border border-white/10 hover:border-cyan-500/40 hover:bg-cyan-500/10 transition-all text-left active:scale-[0.99]"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                <QrCode className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-sm font-display font-bold uppercase tracking-wider text-white block">
-                  SMARTPHONE GYRO PAIRING
-                </span>
-                <span className="text-[11px] font-mono text-gray-400">
-                  Scan QR code for tilt steering + paddle shifters
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
-          </button>
-        </div>
-
-        {/* RIGHT COLUMN: ACTUAL INTERACTIVE 3D SHOWCASE */}
-        <div className="lg:col-span-7 flex flex-col justify-center">
-          <div className="glass-panel p-5 rounded-3xl border border-white/15 relative overflow-hidden shadow-2xl backdrop-blur-xl">
-            <div
-              className="absolute -top-24 -right-24 w-72 h-72 rounded-full blur-[100px] opacity-25 pointer-events-none"
-              style={{ backgroundColor: '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0') }}
-            />
-
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div>
-                <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-cyan-400">
-                  ACTIVE TRACK WEAPON
-                </span>
-                <h3 className="text-2xl lg:text-3xl font-display font-black tracking-wider text-white leading-tight">
+                <p className="text-xs text-gray-400 font-medium">{selectedCar.subtitle}</p>
+                <h2 className="text-3xl lg:text-4xl font-display font-bold tracking-tight text-[#F4F5F7] leading-none mt-0.5">
                   {selectedCar.name}
-                </h3>
-                <span className="text-xs text-gray-400 font-mono">
-                  {selectedCar.subtitle}
-                </span>
+                </h2>
               </div>
+              <button
+                type="button"
+                onClick={handleHomeRev}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors ${
+                  isHomeRevving
+                    ? 'bg-[#FF3B30] border-[#FF3B30] text-white'
+                    : 'bg-white/5 border-white/15 text-[#F5A623] hover:bg-[#F5A623]/15'
+                }`}
+              >
+                {isHomeRevving ? '8,500 RPM' : 'Rev Engine'}
+              </button>
+            </div>
 
-              <div className="flex items-center space-x-1 bg-black/50 p-1 rounded-xl border border-white/10" role="group" aria-label="Quick car selection">
-                {SUPER_CARS.map((car) => (
+            <p className="text-sm text-gray-300 leading-snug mb-3.5 max-w-[60ch]">
+              {selectedCar.description}
+            </p>
+
+            {/* Quick 5-Car Switcher Tabs */}
+            <div
+              className="grid grid-cols-5 gap-1 bg-black/50 p-1 rounded-lg border border-white/10 mb-3.5"
+              role="group"
+              aria-label="Quick car selection"
+            >
+              {SUPER_CARS.map((car) => {
+                const active = selectedCar.id === car.id;
+                const swatch = `#${car.bodyColorHex.toString(16).padStart(6, '0')}`;
+                return (
                   <button
                     key={car.id}
+                    type="button"
                     onClick={() => {
                       playClick();
                       onSelectCar(car);
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono transition-all ${
-                      selectedCar.id === car.id
-                        ? 'bg-cyan-500 text-black shadow-md'
-                        : 'text-gray-400 hover:text-white'
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-display font-semibold tracking-wide transition-colors flex items-center justify-center gap-1 ${
+                      active
+                        ? 'bg-[#F4F5F7] text-[#090A0D]'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
-                    {car.name}
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: swatch }}
+                    />
+                    <span className="truncate">{car.name}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
-            {/* FULL INTERACTIVE 360° 3D TURNTABLES (Drag, Zoom, Angle Presets & Rev!) */}
-            <div className="relative w-full h-52 xl:h-64 rounded-2xl overflow-hidden bg-[#070a12] border border-white/10 mb-4">
-              <CarPreview3D
-                car={selectedCar}
-                isRevving={isHomeRevving}
-                onRevClick={handleHomeRev}
-                showControls={true}
-              />
-              <div className="absolute bottom-2.5 left-3.5 right-3.5 pointer-events-none">
-                <span className="text-[11px] font-mono text-gray-200 bg-black/55 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/10 inline-block max-w-full truncate">
-                  {selectedCar.description}
+            {/* Clean Hairline Spec Strip */}
+            <div className="grid grid-cols-4 border-t border-white/10 pt-3 text-left">
+              <div className="pr-2 border-r border-white/10">
+                <span className="text-[11px] text-gray-400 block">Top Speed</span>
+                <span className="text-lg font-display font-bold tabular-nums text-white">
+                  {selectedCar.topSpeedKmh}
                 </span>
+                <span className="text-[10px] text-gray-500 ml-0.5">km/h</span>
               </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2.5 text-center mb-3">
-              <div className="bg-black/40 border border-white/10 p-2 rounded-xl">
-                <div className="flex items-center justify-center space-x-1 text-cyan-400 mb-0.5">
-                  <Gauge className="w-3.5 h-3.5" />
-                  <span className="text-[9px] uppercase font-bold tracking-wider">TOP SPEED</span>
-                </div>
-                <span className="text-lg lg:text-xl font-display font-extrabold text-white">
-                  {selectedCar.topSpeedKmh} <span className="text-[10px] text-gray-400 font-normal">KM/H</span>
+              <div className="px-2.5 border-r border-white/10">
+                <span className="text-[11px] text-gray-400 block">0–100 km/h</span>
+                <span className="text-lg font-display font-bold tabular-nums text-white">
+                  {accelZeroToHundred}
                 </span>
+                <span className="text-[10px] text-gray-500 ml-0.5">s</span>
               </div>
-
-              <div className="bg-black/40 border border-white/10 p-2 rounded-xl">
-                <div className="flex items-center justify-center space-x-1 text-emerald-400 mb-0.5">
-                  <Zap className="w-3.5 h-3.5" />
-                  <span className="text-[9px] uppercase font-bold tracking-wider">0-100 ACCEL</span>
-                </div>
-                <span className="text-lg lg:text-xl font-display font-extrabold text-white">
-                  {(100 / 3.6 / (selectedCar.accelerationRate * 1.18)).toFixed(1)}{' '}
-                  <span className="text-[10px] text-gray-400 font-normal">S</span>
+              <div className="px-2.5 border-r border-white/10">
+                <span className="text-[11px] text-gray-400 block">Grip</span>
+                <span className="text-lg font-display font-bold tabular-nums text-[#00E5FF]">
+                  {selectedCar.handlingScore}
                 </span>
+                <span className="text-[10px] text-gray-500 ml-0.5">/10</span>
               </div>
-
-              <div className="bg-black/40 border border-white/10 p-2 rounded-xl">
-                <div className="flex items-center justify-center space-x-1 text-purple-400 mb-0.5">
-                  <Award className="w-3.5 h-3.5" />
-                  <span className="text-[9px] uppercase font-bold tracking-wider">HANDLING</span>
-                </div>
-                <span className="text-lg lg:text-xl font-display font-extrabold text-white">
-                  {selectedCar.handlingScore} <span className="text-[10px] text-gray-400 font-normal">/10</span>
-                </span>
-              </div>
-
-              <div className="bg-black/40 border border-white/10 p-2 rounded-xl">
-                <div className="flex items-center justify-center space-x-1 text-amber-400 mb-0.5">
-                  <Flame className="w-3.5 h-3.5" />
-                  <span className="text-[9px] uppercase font-bold tracking-wider">DRIFT</span>
-                </div>
-                <span className="text-lg lg:text-xl font-display font-extrabold text-white">
+              <div className="pl-2.5">
+                <span className="text-[11px] text-gray-400 block">Drift Bias</span>
+                <span className="text-lg font-display font-bold tabular-nums text-[#F5A623]">
                   {selectedCar.driftFactor}x
                 </span>
               </div>
             </div>
+          </section>
 
-            <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs font-mono text-gray-400">
-              <div className="flex items-center space-x-2">
-                <span>CUSTOM PAINT:</span>
-                <span
-                  className="w-3 h-3 rounded-full inline-block border border-white/40"
-                  style={{ backgroundColor: '#' + selectedCar.bodyColorHex.toString(16).padStart(6, '0') }}
-                />
-                <span className="text-gray-300">SEMI-AUTO (MAN ▲ / AUTO ▼) • AWD</span>
-              </div>
-              <button
-                onClick={() => {
-                  playClick();
-                  onOpenGarage();
-                }}
-                className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 transition-colors"
-              >
-                OPEN FULL GARAGE SHOWROOM <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* FOOTER BAR */}
-      <footer className="relative z-20 flex items-center justify-between px-6 lg:px-8 py-2.5 border-t border-white/10 bg-black/45 text-[11px] font-mono text-gray-400 shrink-0">
-        <div className="flex items-center space-x-4">
-          <span>APEX ENGINE v2.6</span>
-          <span>•</span>
-          <span>MANUAL UP / AUTO DOWN</span>
-          <span>•</span>
-          <span>QUALITY: {settings.graphicsQuality.toUpperCase()}</span>
-        </div>
-        <div className="flex items-center space-x-4">
-          <span className="text-cyan-400/90">ROOM CODE: {roomId}</span>
-          <span>•</span>
-          <span>© 2026 APEX MOTORSPORT STUDIOS</span>
-        </div>
-      </footer>
-
-      {/* MODAL 1: CONTROLS & HOW TO PLAY */}
-      {activeModal === 'controls' && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Driving Controls and Dynamics"
-          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
-        >
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-2xl w-full text-white font-racing relative shadow-2xl">
-            <button
-              onClick={() => setActiveModal('none')}
-              aria-label="Close controls modal"
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <h3 className="text-2xl font-display font-extrabold text-cyan-300 mb-1 flex items-center gap-2">
-              <Gamepad2 className="w-6 h-6 text-cyan-400" /> GEARBOX & DRIVING CONTROLS
-            </h3>
-            <p className="text-xs text-gray-400 mb-4 font-mono">
-              Manual upshifts (SHIFT / GEAR+) combined with automatic speed-based downshifting when braking or slowing down.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div className="bg-black/50 border border-white/10 p-4 rounded-xl">
-                <span className="text-xs uppercase font-bold text-cyan-400 flex items-center gap-1.5 mb-3">
-                  <Keyboard className="w-4 h-4" /> PC KEYBOARD (SEMI-AUTO)
+          {/* Gearbox Setup & Primary Race Launch */}
+          <section className="pit-surface rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-semibold text-white block">Transmission</span>
+                <span className="text-[11px] text-gray-400">
+                  {settings.transmissionMode === 'auto'
+                    ? 'Auto shifts 1–6 and reverses on brake'
+                    : 'Manual sequential shifts via Shift / Ctrl or paddles'}
                 </span>
-                <ul className="space-y-1.5 text-xs font-mono text-gray-300">
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">THROTTLE / BRAKE:</span>
-                    <span className="text-cyan-300 font-bold">W / S or UP / DOWN</span>
-                  </li>
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">STEERING:</span>
-                    <span className="text-white font-bold">A / D or LEFT / RIGHT</span>
-                  </li>
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">GEAR UP (+ MANUAL):</span>
-                    <span className="text-amber-400 font-bold">SHIFT or E</span>
-                  </li>
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">GEAR DOWN:</span>
-                    <span className="text-emerald-400 font-bold">AUTO (CTRL/Q = REV)</span>
-                  </li>
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">HANDBRAKE DRIFT:</span>
-                    <span className="text-rose-400 font-bold">SPACEBAR ONLY</span>
-                  </li>
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">NITRO BOOST:</span>
-                    <span className="text-purple-400 font-bold">F or N</span>
-                  </li>
-                  <li className="flex justify-between border-b border-white/5 pb-1">
-                    <span className="text-gray-400">CAMERA / HORN:</span>
-                    <span className="text-cyan-300 font-bold">C / H</span>
-                  </li>
-                  <li className="flex justify-between">
-                    <span className="text-gray-400">RESET / PAUSE:</span>
-                    <span className="text-rose-400 font-bold">R / ESC</span>
-                  </li>
-                </ul>
               </div>
 
-              <div className="bg-black/50 border border-cyan-500/20 p-4 rounded-xl flex flex-col justify-between">
-                <div>
-                  <span className="text-xs uppercase font-bold text-cyan-400 flex items-center gap-1.5 mb-3">
-                    <Smartphone className="w-4 h-4" /> SMARTPHONE GYRO + PADDLES
-                  </span>
-                  <div className="space-y-2 text-xs font-mono text-gray-300">
-                    <p className="text-gray-400">
-                      1. Scan QR code or open on phone in <span className="text-cyan-300 font-bold">Landscape</span>.
-                    </p>
-                    <p className="text-gray-400">
-                      2. Tilt phone left/right to steer cleanly.
-                    </p>
-                    <p className="text-gray-400">
-                      3. Tap <span className="text-cyan-300 font-bold">GEAR + ▲</span> (right paddle) at redline to upshift! Downshifts happen automatically as speed drops (tap <span className="text-amber-300 font-bold">GEAR -</span> for Reverse).
-                    </p>
-                  </div>
-                </div>
-
+              <div
+                className="inline-flex p-0.5 rounded-lg bg-black/60 border border-white/15 shrink-0"
+                role="group"
+                aria-label="Transmission mode"
+              >
                 <button
-                  onClick={() => setActiveModal('gyro')}
-                  className="mt-3 w-full py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+                  type="button"
+                  onClick={() => handleTransmissionChange('auto')}
+                  className={`px-3 py-1 rounded-md text-xs font-display font-bold tracking-wider transition-colors ${
+                    settings.transmissionMode === 'auto'
+                      ? 'bg-[#00E5FF] text-[#090A0D]'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
                 >
-                  PAIR PHONE NOW
+                  AUTO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTransmissionChange('manual')}
+                  className={`px-3 py-1 rounded-md text-xs font-display font-bold tracking-wider transition-colors ${
+                    settings.transmissionMode === 'manual'
+                      ? 'bg-[#F5A623] text-[#090A0D]'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  MANUAL
                 </button>
               </div>
             </div>
 
             <button
-              onClick={() => setActiveModal('none')}
-              className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+              type="button"
+              onClick={() => {
+                playClick();
+                onStartRacing();
+              }}
+              onMouseEnter={playHover}
+              className="group w-full flex items-center justify-between px-5 py-3.5 rounded-lg bg-[#FF3B30] hover:bg-[#ff5147] active:scale-[0.99] transition-all text-white shadow-[0_10px_28px_rgba(255,59,48,0.35)]"
             >
-              CLOSE (ESC)
+              <span className="flex items-center gap-2.5 text-lg font-display font-bold tracking-wide">
+                <Play className="w-5 h-5 fill-white" />
+                <span>Start Race</span>
+              </span>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-black/30 text-white/90">
+                Enter
+              </span>
+            </button>
+
+            {/* Secondary Pit-Lane Actions */}
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  playClick();
+                  onOpenGarage();
+                }}
+                onMouseEnter={playHover}
+                className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/25 transition-colors text-left"
+              >
+                <span className="flex items-center gap-2 text-xs font-semibold text-gray-100">
+                  <Warehouse className="w-4 h-4 text-[#F5A623]" />
+                  <span>Open Garage</span>
+                </span>
+                <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playClick();
+                  onOpenMultiplayer();
+                }}
+                onMouseEnter={playHover}
+                className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/25 transition-colors text-left"
+              >
+                <span className="flex items-center gap-2 text-xs font-semibold text-gray-100">
+                  <Users className="w-4 h-4 text-[#00E5FF]" />
+                  <span>Multiplayer</span>
+                </span>
+                <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      {/* CLEAN STATUS FOOTER */}
+      <footer className="relative z-20 flex items-center justify-between px-5 lg:px-8 py-2 border-t border-white/10 bg-[#090A0D]/80 text-[11px] text-gray-400 pointer-events-auto shrink-0">
+        <div className="flex items-center space-x-3">
+          <span>Quality: <strong className="text-gray-200 capitalize">{settings.graphicsQuality}</strong></span>
+          <span className="text-white/15">|</span>
+          <span>Gearbox: <strong className="text-[#00E5FF] uppercase">{settings.transmissionMode}</strong></span>
+          {records.bestScore > 0 && (
+            <>
+              <span className="text-white/15 hidden sm:inline">|</span>
+              <span className="hidden sm:inline">High Drift Score: <strong className="text-[#F5A623] tabular-nums">{records.bestScore.toLocaleString()}</strong></span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center space-x-3 font-mono">
+          <span>Gyro ID: <strong className="text-gray-200">{roomId}</strong></span>
+        </div>
+      </footer>
+
+      {/* MODAL 1: CONTROLS & GEARBOX GUIDE */}
+      {activeModal === 'controls' && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Driving Controls"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+        >
+          <div className="pit-surface p-6 rounded-xl border border-white/15 max-w-2xl w-full text-[#F4F5F7] relative">
+            <button
+              type="button"
+              onClick={() => setActiveModal('none')}
+              aria-label="Close controls modal"
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-2xl font-display font-bold text-white mb-1 flex items-center gap-2">
+              <Gamepad2 className="w-5 h-5 text-[#00E5FF]" /> Driving Controls
+            </h3>
+            <p className="text-xs text-gray-400 mb-4">
+              Switch anytime between Automatic (6-speed DCT) and Manual sequential shifting using the G key or HUD switch.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+              <div className="bg-black/45 border border-white/10 p-4 rounded-lg">
+                <span className="text-xs font-semibold text-[#00E5FF] flex items-center gap-1.5 mb-3">
+                  <Keyboard className="w-4 h-4" /> Keyboard Controls
+                </span>
+                <ul className="space-y-1.5 text-xs text-gray-300">
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Gas / Brake (or Auto Reverse)</span>
+                    <span className="font-mono text-white font-semibold">W / S or ↑ / ↓</span>
+                  </li>
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Steer</span>
+                    <span className="font-mono text-white font-semibold">A / D or ← / →</span>
+                  </li>
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Toggle Auto / Manual Gearbox</span>
+                    <span className="font-mono text-[#00E5FF] font-semibold">G</span>
+                  </li>
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Shift Up / Shift Down</span>
+                    <span className="font-mono text-[#F5A623] font-semibold">Shift (E) / Ctrl (Q)</span>
+                  </li>
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Handbrake Drift</span>
+                    <span className="font-mono text-[#FF3B30] font-semibold">Spacebar</span>
+                  </li>
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Nitro Boost</span>
+                    <span className="font-mono text-[#00E5FF] font-semibold">F or N</span>
+                  </li>
+                  <li className="flex justify-between border-b border-white/5 pb-1">
+                    <span className="text-gray-400">Camera View / Horn</span>
+                    <span className="font-mono text-white font-semibold">C / H</span>
+                  </li>
+                  <li className="flex justify-between">
+                    <span className="text-gray-400">Reset Car / Pause</span>
+                    <span className="font-mono text-white font-semibold">R / Esc</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-black/45 border border-white/10 p-4 rounded-lg flex flex-col justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-[#F5A623] flex items-center gap-1.5 mb-3">
+                    <Smartphone className="w-4 h-4" /> Phone Gyro Steering Wheel
+                  </span>
+                  <ol className="space-y-2 text-xs text-gray-300 list-decimal list-inside">
+                    <li>Open the pairing QR code on your smartphone camera (same Wi-Fi network).</li>
+                    <li>Hold your phone in landscape orientation and tap Center to zero your neutral angle.</li>
+                    <li>Slide fingers vertically on Gas &amp; Brake rails for progressive pedal pressure.</li>
+                    <li>Use the paddle shifters in Manual mode or let Auto manage gears cleanly.</li>
+                  </ol>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('gyro')}
+                  className="mt-4 w-full py-2 bg-[#00E5FF]/15 hover:bg-[#00E5FF]/25 text-[#00E5FF] border border-[#00E5FF]/40 rounded-lg text-xs font-semibold transition-colors"
+                >
+                  Open Pairing QR Code
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveModal('none')}
+              className="w-full py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-lg text-xs font-semibold transition-colors"
+            >
+              Close (Esc)
             </button>
           </div>
         </div>
@@ -596,43 +594,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
           aria-label="Pair Gyro Controller"
           className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
         >
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 max-w-md w-full text-white text-center font-racing relative shadow-2xl">
+          <div className="pit-surface p-6 rounded-xl border border-white/15 max-w-md w-full text-[#F4F5F7] text-center relative">
             <button
+              type="button"
               onClick={() => setActiveModal('none')}
               aria-label="Close gyro pairing modal"
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="text-xl font-display font-bold text-cyan-300 mb-1 flex items-center justify-center gap-2">
-              <QrCode className="w-5 h-5 text-cyan-400" /> PAIR GYRO CONTROLLER
-            </h3>
-            <p className="text-xs text-gray-400 mb-3 font-mono">
-              Scan with your phone&apos;s camera (same Wi-Fi) for tilt steering &amp; F1 paddle shifters!
+            <h3 className="text-xl font-display font-bold text-white mb-1">Pair Phone Steering Wheel</h3>
+            <p className="text-xs text-gray-400 mb-3">
+              Scan with your phone&apos;s camera on the same Wi-Fi network to turn it into a 60Hz tilt steering wheel.
             </p>
 
-            <div className="bg-white p-3.5 rounded-2xl shadow-xl flex flex-col items-center justify-center mb-3">
+            <div className="bg-white p-3 rounded-xl inline-flex items-center justify-center mb-3">
               {qrDataUrl ? (
-                <img src={qrDataUrl} alt="QR Code" className="w-52 h-52 rounded-lg select-none block" />
+                <img src={qrDataUrl} alt="Controller QR Code" className="w-48 h-48 rounded select-none block" />
               ) : (
-                <div className="w-52 h-52 flex items-center justify-center text-gray-500 text-xs font-mono">
-                  Generating High-Contrast QR...
+                <div className="w-48 h-48 flex items-center justify-center text-gray-500 text-xs font-mono">
+                  Generating QR...
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between bg-cyan-950/50 border border-cyan-500/40 p-2.5 rounded-xl mb-3">
-              <span className="text-xs text-cyan-200 font-bold uppercase tracking-wider">PAIRING CODE:</span>
-              <span className="font-mono font-extrabold text-lg text-cyan-300 tracking-widest bg-black/80 px-3 py-0.5 rounded border border-cyan-500/50">
+            <div className="flex items-center justify-between bg-black/45 border border-white/10 px-3 py-2 rounded-lg mb-3">
+              <span className="text-xs text-gray-300 font-semibold">Pairing Code</span>
+              <span className="font-mono font-bold text-base text-[#00E5FF] tracking-widest">
                 {roomId}
               </span>
             </div>
 
-            <div className="bg-black/40 border border-white/10 rounded-lg p-2.5 mb-3 text-left">
-              <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 mb-1">
-                <span className="flex items-center gap-1 text-cyan-400"><Wifi className="w-3 h-3" /> Controller Link:</span>
+            <div className="bg-black/45 border border-white/10 rounded-lg p-2.5 mb-3 text-left">
+              <div className="flex items-center justify-between text-[11px] text-gray-400 mb-1">
+                <span className="flex items-center gap-1 text-[#00E5FF]"><Wifi className="w-3 h-3" /> Controller Link</span>
                 <button
+                  type="button"
                   onClick={() => {
                     if (controllerUrl) {
                       navigator.clipboard.writeText(controllerUrl);
@@ -640,38 +638,39 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       setTimeout(() => setCopiedLink(false), 2000);
                     }
                   }}
-                  className="flex items-center gap-1 text-cyan-300 hover:text-cyan-200 transition-colors"
+                  className="flex items-center gap-1 text-[#00E5FF] hover:underline"
                 >
                   {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedLink ? 'COPIED!' : 'COPY'}</span>
+                  <span>{copiedLink ? 'Copied' : 'Copy link'}</span>
                 </button>
               </div>
-              <div className="text-[11px] font-mono text-gray-300 break-all select-all bg-black/60 p-1.5 rounded">
+              <div className="text-[11px] font-mono text-gray-300 break-all select-all bg-black/55 p-1.5 rounded">
                 {controllerUrl || 'Detecting network...'}
               </div>
               {httpsPort !== null && (
-                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-white/10 text-[10px] font-mono">
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-white/10 text-[11px]">
                   <span className="text-gray-400">
-                    {preferHttpsQr ? 'First time on phone: Advanced → Proceed' : 'HTTP mode (Touch wheel if gyro blocked)'}
+                    {preferHttpsQr ? 'If browser warns: Advanced -> Proceed' : 'HTTP fallback (drag wheel if gyro blocked)'}
                   </span>
                   <button
+                    type="button"
                     onClick={() => setPreferHttpsQr((prev) => !prev)}
-                    className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold"
+                    className="px-2 py-0.5 rounded bg-white/10 border border-white/15 text-[#00E5FF] font-mono font-bold"
                   >
-                    {preferHttpsQr ? 'HTTPS (GYRO)' : 'HTTP'}
+                    {preferHttpsQr ? 'HTTPS' : 'HTTP'}
                   </button>
                 </div>
               )}
             </div>
 
             {availableIps.length > 1 && (
-              <div className="flex items-center justify-center gap-2 mb-3 text-[11px] font-mono text-gray-400">
-                <label htmlFor="home-ip-select">Wi-Fi / LAN IP:</label>
+              <div className="flex items-center justify-center gap-2 mb-3 text-xs text-gray-400">
+                <label htmlFor="home-ip-select">Wi-Fi Adapter:</label>
                 <select
                   id="home-ip-select"
                   value={lanIp}
                   onChange={(e) => setLanIp(e.target.value)}
-                  className="bg-black/60 border border-cyan-500/30 rounded px-2 py-1 text-cyan-300 text-[11px] outline-none"
+                  className="bg-black/60 border border-white/15 rounded px-2 py-1 text-[#00E5FF] text-xs font-mono outline-none"
                 >
                   {availableIps.map((ip) => (
                     <option key={ip} value={ip}>{ip}</option>
@@ -681,16 +680,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
 
             <button
+              type="button"
               onClick={() => setActiveModal('none')}
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider"
+              className="w-full py-2.5 bg-[#00E5FF] hover:bg-[#33ecff] text-[#090A0D] font-display font-bold rounded-lg text-xs uppercase tracking-wider"
             >
-              DONE
+              Done
             </button>
           </div>
         </div>
       )}
 
-      {/* MODAL 3: SETTINGS & GRAPHICS */}
+      {/* MODAL 3: GAMEPLAY & GRAPHICS SETTINGS */}
       {activeModal === 'settings' && (
         <div
           role="dialog"
@@ -698,39 +698,65 @@ export const HomeView: React.FC<HomeViewProps> = ({
           aria-label="Gameplay and Graphics Settings"
           className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
         >
-          <div className="glass-panel p-6 rounded-2xl border border-white/20 max-w-md w-full text-white font-racing relative shadow-2xl">
+          <div className="pit-surface p-6 rounded-xl border border-white/15 max-w-md w-full text-[#F4F5F7] relative">
             <button
+              type="button"
               onClick={() => setActiveModal('none')}
               aria-label="Close settings modal"
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
             <h3 className="text-xl font-display font-bold text-white mb-1 flex items-center gap-2">
-              <Sliders className="w-5 h-5 text-cyan-400" /> GAMEPLAY & GRAPHICS SETTINGS
+              <Sliders className="w-5 h-5 text-[#00E5FF]" /> Gameplay &amp; Graphics
             </h3>
-            <p className="text-xs text-gray-400 mb-4 font-mono">
-              Settings are saved automatically and applied in-game.
+            <p className="text-xs text-gray-400 mb-4">
+              Preferences are saved automatically for both desktop and mobile play.
             </p>
 
             <div className="space-y-4 mb-5">
               <div>
-                <span className="text-xs uppercase font-bold text-gray-300 block mb-2 font-mono">
-                  GRAPHICS PRESET
+                <span className="text-xs font-semibold text-gray-300 block mb-1.5">
+                  Transmission Mode
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['auto', 'manual'] as const).map((tm) => (
+                    <button
+                      key={tm}
+                      type="button"
+                      onClick={() => handleTransmissionChange(tm)}
+                      className={`py-2 rounded-lg text-xs font-display font-bold uppercase tracking-wider border transition-colors ${
+                        settings.transmissionMode === tm
+                          ? tm === 'auto'
+                            ? 'bg-[#00E5FF] text-[#090A0D] border-[#00E5FF]'
+                            : 'bg-[#F5A623] text-[#090A0D] border-[#F5A623]'
+                          : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {tm === 'auto' ? 'Automatic DCT' : 'Manual Sequential'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs font-semibold text-gray-300 block mb-1.5">
+                  Graphics Quality
                 </span>
                 <div className="grid grid-cols-3 gap-2">
                   {(['ultra', 'high', 'medium'] as const).map((q) => (
                     <button
                       key={q}
+                      type="button"
                       onClick={() => {
                         playClick();
                         onUpdateSettings({ graphicsQuality: q });
                       }}
-                      className={`py-2 rounded-xl text-xs font-bold uppercase font-mono transition-all border ${
+                      className={`py-2 rounded-lg text-xs font-display font-bold uppercase border transition-colors ${
                         settings.graphicsQuality === q
-                          ? 'bg-cyan-500 text-black border-cyan-400 shadow-lg shadow-cyan-500/20'
-                          : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                          ? 'bg-[#F4F5F7] text-[#090A0D] border-white'
+                          : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
                       }`}
                     >
                       {q}
@@ -740,43 +766,45 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </div>
 
               <div>
-                <span className="text-xs uppercase font-bold text-gray-300 block mb-2 font-mono">
-                  DEFAULT CAMERA VIEW
+                <span className="text-xs font-semibold text-gray-300 block mb-1.5">
+                  Default Camera View
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
+                    type="button"
                     onClick={() => {
                       playClick();
                       onUpdateSettings({ defaultCamera: 'chase' });
                     }}
-                    className={`py-2 rounded-xl text-xs font-bold uppercase font-mono transition-all border ${
+                    className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
                       settings.defaultCamera === 'chase'
-                        ? 'bg-cyan-500 text-black border-cyan-400'
-                        : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                        ? 'bg-[#F4F5F7] text-[#090A0D] border-white'
+                        : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
                     }`}
                   >
-                    CHASE (BEHIND CAR)
+                    Chase Camera
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       playClick();
                       onUpdateSettings({ defaultCamera: 'hood' });
                     }}
-                    className={`py-2 rounded-xl text-xs font-bold uppercase font-mono transition-all border ${
+                    className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
                       settings.defaultCamera === 'hood'
-                        ? 'bg-cyan-500 text-black border-cyan-400'
-                        : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                        ? 'bg-[#F4F5F7] text-[#090A0D] border-white'
+                        : 'bg-black/45 text-gray-400 border-white/10 hover:text-white'
                     }`}
                   >
-                    HOOD (FIRST PERSON)
+                    Hood Camera
                   </button>
                 </div>
               </div>
 
               <div>
-                <div className="flex items-center justify-between text-xs uppercase font-bold text-gray-300 mb-1.5 font-mono">
-                  <label htmlFor="gyro-sens-home">GYRO SENSITIVITY</label>
-                  <span className="text-cyan-400">{settings.gyroSensitivity.toFixed(1)}x</span>
+                <div className="flex items-center justify-between text-xs font-semibold text-gray-300 mb-1">
+                  <label htmlFor="gyro-sens-home">Gyro Steering Sensitivity</label>
+                  <span className="font-mono text-[#00E5FF] tabular-nums">{settings.gyroSensitivity.toFixed(1)}x</span>
                 </div>
                 <input
                   id="gyro-sens-home"
@@ -786,30 +814,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   step={0.1}
                   value={settings.gyroSensitivity}
                   onChange={(e) => onUpdateSettings({ gyroSensitivity: parseFloat(e.target.value) })}
-                  className="w-full accent-cyan-400 cursor-pointer"
+                  className="w-full accent-[#00E5FF] cursor-pointer"
                 />
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/10">
-                <span className="text-xs font-mono text-gray-300">MASTER AUDIO & SOUND ENGINE</span>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-black/45 border border-white/10">
+                <span className="text-xs font-semibold text-gray-300">Engine &amp; Effects Audio</span>
                 <button
+                  type="button"
                   onClick={handleToggleMute}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold font-mono ${
+                  className={`px-3 py-1 rounded text-xs font-mono font-bold ${
                     settings.isMuted
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                      ? 'bg-[#FF3B30]/20 text-[#FF3B30] border border-[#FF3B30]/40'
+                      : 'bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/40'
                   }`}
                 >
-                  {settings.isMuted ? 'MUTED' : 'ENABLED'}
+                  {settings.isMuted ? 'Muted' : 'Enabled'}
                 </button>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={() => setActiveModal('none')}
-              className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+              className="w-full py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-lg text-xs font-semibold transition-colors"
             >
-              SAVE & CLOSE
+              Save &amp; Close
             </button>
           </div>
         </div>

@@ -122,11 +122,11 @@ export const Minimap: React.FC<MinimapProps> = ({
     octx.lineWidth = 6.5;
     octx.stroke();
 
-    // 4. Illuminated Racing Line Gradient
+    // 4. Illuminated Racing Line
     const trackGrad = octx.createLinearGradient(0, canvasH, canvasW, 0);
-    trackGrad.addColorStop(0, '#00f2fe');
-    trackGrad.addColorStop(0.5, '#38bdf8');
-    trackGrad.addColorStop(1, '#a855f7');
+    trackGrad.addColorStop(0, '#00E5FF');
+    trackGrad.addColorStop(0.65, '#38bdf8');
+    trackGrad.addColorStop(1, '#F5A623');
     octx.strokeStyle = trackGrad;
     octx.lineWidth = 2.2;
     octx.stroke();
@@ -275,16 +275,16 @@ export const Minimap: React.FC<MinimapProps> = ({
 
   if (isMobile) {
     return (
-      <div className={`hud-glass-capsule p-1.5 rounded-2xl border border-cyan-500/35 flex flex-col items-center pointer-events-auto shadow-lg ${className}`}>
-        <div className="flex items-center justify-between w-full text-[9px] uppercase font-bold text-gray-300 mb-1 px-1">
-          <span className="tracking-wider">GPS</span>
-          <span className="text-cyan-400 font-mono font-black">{progressPercent}%</span>
+      <div className={`pit-hud-capsule p-1.5 rounded-lg border border-white/15 flex flex-col items-center pointer-events-auto ${className}`}>
+        <div className="flex items-center justify-between w-full text-[9px] font-bold text-gray-300 mb-1 px-0.5">
+          <span className="tracking-wider">RADAR</span>
+          <span className="text-[#00E5FF] font-mono tabular-nums font-bold">{progressPercent}%</span>
         </div>
         <canvas
           ref={canvasRef}
           width={canvasW}
           height={canvasH}
-          className="w-[74px] h-[74px] sm:w-20 sm:h-20 rounded-xl bg-black/50 border border-cyan-500/20 shadow-inner"
+          className="w-[74px] h-[74px] sm:w-20 sm:h-20 rounded bg-[#090A0D] border border-white/10"
         />
       </div>
     );
@@ -292,15 +292,15 @@ export const Minimap: React.FC<MinimapProps> = ({
 
   const innerContent = (
     <>
-      <div className="flex items-center justify-between w-full text-[10px] uppercase font-bold text-gray-300 mb-1.5 px-0.5">
-        <span className="tracking-wider">GPS RADAR</span>
-        <span className="text-cyan-400 font-mono font-bold">{progressPercent}%</span>
+      <div className="flex items-center justify-between w-full text-[10px] font-semibold text-gray-300 mb-1.5 px-0.5">
+        <span className="tracking-wider uppercase">GPS Radar</span>
+        <span className="text-[#00E5FF] font-mono tabular-nums font-bold">{progressPercent}%</span>
       </div>
       <canvas
         ref={canvasRef}
         width={canvasW}
         height={canvasH}
-        className="w-28 h-32 rounded-xl bg-black/50 border border-cyan-500/20 shadow-inner"
+        className="w-28 h-32 rounded-lg bg-[#090A0D] border border-white/10"
       />
     </>
   );
@@ -314,7 +314,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   }
 
   return (
-    <div className={`hud-glass-capsule p-3 rounded-2xl border border-cyan-500/30 flex flex-col items-center pointer-events-auto shadow-2xl ${className}`}>
+    <div className={`pit-hud-capsule p-3 rounded-xl border border-white/15 flex flex-col items-center pointer-events-auto ${className}`}>
       {innerContent}
     </div>
   );
