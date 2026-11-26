@@ -13,7 +13,9 @@ interface CarPreview3DProps {
   className?: string;
   showControls?: boolean;
   controlsAlign?: 'top-right' | 'bottom-right';
+  controlsClassName?: string;
   targetOffsetX?: number;
+  cameraDistanceScale?: number;
 }
 
 type CameraAnglePreset = 'hero' | 'side' | 'rear';
@@ -25,7 +27,9 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
   className = '',
   showControls = true,
   controlsAlign = 'top-right',
-  targetOffsetX = 0
+  controlsClassName,
+  targetOffsetX = 0,
+  cameraDistanceScale = 1.0
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -109,7 +113,11 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 60);
-    camera.position.set(3.2 + targetOffsetX, 1.48, 3.85);
+    camera.position.set(
+      3.2 * cameraDistanceScale + targetOffsetX,
+      1.48 * Math.max(1, cameraDistanceScale * 0.92),
+      3.85 * cameraDistanceScale
+    );
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
@@ -130,7 +138,7 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     controls.dampingFactor = 0.06;
     controls.enablePan = false;
     controls.minDistance = 2.9;
-    controls.maxDistance = 7.4;
+    controls.maxDistance = 9.0;
     controls.minPolarAngle = 0.2;
     controls.maxPolarAngle = Math.PI * 0.46;
     controls.autoRotate = autoSpinRef.current;
@@ -334,11 +342,15 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     if (!camera || !controls) return;
 
     if (preset === 'hero') {
-      camera.position.set(3.2 + targetOffsetX, 1.48, 3.85);
+      camera.position.set(
+        3.2 * cameraDistanceScale + targetOffsetX,
+        1.48 * Math.max(1, cameraDistanceScale * 0.92),
+        3.85 * cameraDistanceScale
+      );
     } else if (preset === 'side') {
-      camera.position.set(4.9 + targetOffsetX, 1.15, 0.05);
+      camera.position.set(4.9 * cameraDistanceScale + targetOffsetX, 1.15, 0.05);
     } else {
-      camera.position.set(-2.9 + targetOffsetX, 1.52, -4.0);
+      camera.position.set(-2.9 * cameraDistanceScale + targetOffsetX, 1.52, -4.0 * cameraDistanceScale);
     }
     controls.target.set(targetOffsetX, 0.48, 0);
     controls.update();
@@ -350,6 +362,9 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
     controls.target.set(targetOffsetX, 0.48, 0);
     controls.update();
   }, [targetOffsetX]);
+
+  const resolvedControlsClass =
+    controlsClassName || (controlsAlign === 'bottom-right' ? 'bottom-3 right-3' : 'top-3 right-3');
 
   return (
     <div
@@ -370,7 +385,9 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
       {/* Interactive HUD Hints & Quick Angles */}
       {showControls && (
         <>
-          <div className="hidden sm:flex absolute bottom-3 left-3 items-center space-x-1.5 px-2.5 py-1 rounded-md bg-[#090A0D]/75 backdrop-blur-md border border-white/15 pointer-events-none">
+          <div
+            className={`hidden sm:flex absolute ${controlsClassName ? 'bottom-12 left-5 lg:bottom-14 lg:left-8' : 'bottom-3 left-3'} items-center space-x-1.5 px-2.5 py-1 rounded-md bg-[#090A0D]/75 backdrop-blur-md border border-white/15 pointer-events-none`}
+          >
             <Move3d className="w-3.5 h-3.5 text-[#00E5FF]" />
             <span className="text-[11px] font-racing text-gray-200">
               Drag to orbit 360° • Scroll to zoom
@@ -378,7 +395,7 @@ export const CarPreview3D: React.FC<CarPreview3DProps> = ({
           </div>
 
           <div
-            className={`absolute ${controlsAlign === 'bottom-right' ? 'bottom-3 right-3' : 'top-3 right-3'} flex items-center space-x-1.5`}
+            className={`absolute ${resolvedControlsClass} flex items-center space-x-1.5`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {(['hero', 'side', 'rear'] as const).map((preset) => (

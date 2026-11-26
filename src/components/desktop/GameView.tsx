@@ -1096,7 +1096,7 @@ export const GameView: React.FC<GameViewProps> = ({
 
       {/* Desktop Header Action Pills (Never steal Spacebar focus!) */}
       {!isMobile && (
-        <div className="absolute top-3.5 left-4 z-40 flex items-center space-x-2">
+        <div className="absolute top-3.5 left-4 z-40 flex items-center space-x-1.5 xl:space-x-2">
           {onExit && (
             <button
               type="button"
@@ -1108,7 +1108,7 @@ export const GameView: React.FC<GameViewProps> = ({
                 onExit();
               }}
               onMouseEnter={() => soundRef.current?.playUiHover()}
-              className="flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
+              className="flex items-center space-x-1.5 pit-hud-capsule px-2.5 xl:px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
               title="Return to Main Menu"
             >
               <span>← Menu</span>
@@ -1125,14 +1125,16 @@ export const GameView: React.FC<GameViewProps> = ({
               setIsQrModalOpen(true);
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className={`flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border text-xs font-semibold active:scale-95 transition-all pointer-events-auto ${
+            aria-label={isPhoneConnected ? 'Gyro Synced' : 'Pair Phone Wheel'}
+            title={isPhoneConnected ? 'Phone Wheel Connected' : 'Pair Phone Wheel (QR)'}
+            className={`flex items-center space-x-1.5 pit-hud-capsule px-2 xl:px-3 py-1.5 rounded-lg border text-xs font-semibold active:scale-95 transition-all pointer-events-auto ${
               isPhoneConnected
                 ? 'border-emerald-400/50 text-emerald-300'
                 : 'border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/15'
             }`}
           >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>{isPhoneConnected ? 'Gyro Synced' : 'Phone Wheel'}</span>
+            <QrCode className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden xl:inline">{isPhoneConnected ? 'Synced' : 'Phone'}</span>
           </button>
 
           <button
@@ -1145,10 +1147,12 @@ export const GameView: React.FC<GameViewProps> = ({
               onOpenGarage?.();
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className="flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-[#F5A623] hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
+            aria-label={`Open Garage (${selectedCar.name})`}
+            title={`Garage — ${selectedCar.name}`}
+            className="flex items-center space-x-1.5 pit-hud-capsule px-2 xl:px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-[#F5A623] hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
           >
-            <Warehouse className="w-3.5 h-3.5" />
-            <span>{selectedCar.name}</span>
+            <Warehouse className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden xl:inline">{selectedCar.name}</span>
           </button>
 
           <button
@@ -1161,10 +1165,14 @@ export const GameView: React.FC<GameViewProps> = ({
               setIsMpModalOpen(true);
             }}
             onMouseEnter={() => soundRef.current?.playUiHover()}
-            className="flex items-center space-x-1.5 pit-hud-capsule px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
+            aria-label="Open Multiplayer Lobby"
+            title={isMpConnected ? `Room ${mpRoomCode}` : 'Multiplayer Lobby'}
+            className="flex items-center space-x-1.5 pit-hud-capsule px-2 xl:px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/15 active:scale-95 transition-all pointer-events-auto"
           >
-            <Users className="w-3.5 h-3.5 text-[#00E5FF]" />
-            <span>{isMpConnected ? `${mpRoomCode} (${opponents.length + 1})` : 'Multiplayer'}</span>
+            <Users className="w-3.5 h-3.5 text-[#00E5FF] shrink-0" />
+            <span className="hidden xl:inline">
+              {isMpConnected ? `${mpRoomCode} (${opponents.length + 1})` : 'MP'}
+            </span>
           </button>
 
           <button
@@ -1390,7 +1398,7 @@ export const GameView: React.FC<GameViewProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => setDismissedPodium(true)}
-                  className="py-2.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-xs font-bold uppercase tracking-wider"
+                  className="py-2.5 bg-white/10 hover:bg-white/15 border border-white/15 rounded-lg text-xs font-bold uppercase tracking-wider"
                 >
                   Continue Driving
                 </button>
@@ -1402,7 +1410,7 @@ export const GameView: React.FC<GameViewProps> = ({
                       handleResetRaceState(mpTargetLaps);
                     }
                   }}
-                  className="py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-xl text-xs font-bold uppercase tracking-wider"
+                  className="py-2.5 bg-[#FF3B30] hover:bg-[#ff5147] text-white rounded-lg text-xs font-bold uppercase tracking-wider"
                 >
                   {isMpHost ? 'New Race (All)' : 'Reset Grid'}
                 </button>

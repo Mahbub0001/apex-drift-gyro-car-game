@@ -94,7 +94,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
       {/* 2. Desktop Top Bar: Timing Telemetry Strip + View Controls */}
       {!isMobile && (
         <>
-          <div className="absolute top-3.5 left-1/2 -translate-x-1/2 flex items-center space-x-3 pit-hud-capsule px-4 py-1.5 rounded-lg border border-white/15">
+          <div className="absolute top-3.5 left-1/2 -translate-x-1/2 flex items-center space-x-2 md:space-x-3 pit-hud-capsule px-3 md:px-4 py-1.5 rounded-lg border border-white/15 whitespace-nowrap">
             <div className="flex items-center space-x-1.5">
               <span className="text-[10px] font-semibold uppercase text-gray-400">LAP</span>
               <span className="text-sm font-display font-bold tabular-nums text-[#00E5FF]">
@@ -252,11 +252,11 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
               G-Force
             </span>
             <div className="relative w-16 h-16 rounded-full border border-white/20 flex items-center justify-center bg-[#090A0D]">
-              <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
-              <div className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
-              <div className="w-8 h-8 rounded-full border border-dashed border-white/15" />
+              <div className="absolute inset-x-0 top-1/2 h-px bg-white/10 pointer-events-none" />
+              <div className="absolute inset-y-0 left-1/2 w-px bg-white/10 pointer-events-none" />
+              <div className="absolute w-8 h-8 rounded-full border border-dashed border-white/15 pointer-events-none" />
               <div
-                className="w-2.5 h-2.5 rounded-full bg-[#00E5FF] shadow-[0_0_8px_#00E5FF] transition-transform duration-75"
+                className="relative z-10 w-2.5 h-2.5 rounded-full bg-[#00E5FF] shadow-[0_0_8px_#00E5FF] transition-transform duration-75"
                 style={{
                   transform: `translate(${Math.max(
                     -22,

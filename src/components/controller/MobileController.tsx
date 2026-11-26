@@ -603,18 +603,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
   if (needsPermissionPrompt && !isPermissionGranted) {
     return (
-      <div className="fixed inset-0 bg-[#08090C] z-50 flex flex-col items-center justify-center p-6 text-center">
-        <div className="glass-panel p-8 rounded-2xl max-w-md w-full border border-cyan-500/30">
-          <Zap className="w-16 h-16 text-cyan-400 mx-auto mb-4 animate-bounce" />
-          <h2 className="text-2xl font-bold font-display text-white mb-2">START YOUR ENGINE</h2>
+      <div className="fixed inset-0 bg-[#090A0D] z-50 flex flex-col items-center justify-center p-6 text-center text-[#F4F5F7]">
+        <div className="pit-surface p-7 rounded-xl max-w-md w-full border border-white/15">
+          <Zap className="w-12 h-12 text-[#00E5FF] mx-auto mb-3" />
+          <h2 className="text-2xl font-bold font-display text-white mb-2">Start Steering Wheel</h2>
           <p className="text-gray-300 text-sm mb-6">
-            Tap below to calibrate and grant access to the phone&apos;s gyroscope motion sensors for steering.
+            Allow motion sensors to steer by tilting your phone, or drag the on-screen wheel directly.
           </p>
           <button
             onClick={requestPermission}
-            className="w-full py-4 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold font-display text-lg rounded-xl shadow-lg shadow-cyan-500/25 transition-all transform active:scale-95"
+            className="w-full py-3.5 bg-[#FF3B30] hover:bg-[#ff5147] text-white font-bold font-display text-base uppercase tracking-wider rounded-lg transition-all active:scale-95"
           >
-            ACTIVATE GYRO WHEEL
+            Activate Gyro Wheel
           </button>
         </div>
       </div>
@@ -623,42 +623,42 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
 
   if (!isLandscape && !forceLandscapeView && !preferPortraitMode) {
     return (
-      <div className="fixed inset-0 bg-[#08090C] z-40 flex flex-col justify-between p-5 text-center select-none text-white font-racing">
-        <div className="flex items-center justify-between glass-panel px-4 py-2.5 rounded-xl border border-white/10">
+      <div className="fixed inset-0 bg-[#090A0D] z-40 flex flex-col justify-between p-5 text-center select-none text-[#F4F5F7] font-racing">
+        <div className="flex items-center justify-between pit-surface px-4 py-2.5 rounded-lg border border-white/10">
           <div className="flex items-center space-x-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+            <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-[#FF3B30]'}`} />
             <span className="text-xs uppercase tracking-wider text-gray-300 font-bold">
-              {isConnected ? `${ping}ms SYNCED` : 'CONNECTING...'}
+              {isConnected ? `${ping}ms Synced` : 'Connecting...'}
             </span>
           </div>
-          <span className="text-xs font-mono text-cyan-300 bg-white/5 px-2 py-0.5 rounded border border-white/10">
-            ROOM: {currentRoomId}
+          <span className="text-xs font-mono text-[#00E5FF] bg-white/5 px-2 py-0.5 rounded border border-white/10">
+            Room: {currentRoomId}
           </span>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center max-w-sm mx-auto my-4">
-          <div className="relative mb-6">
-            <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-400/40 flex items-center justify-center animate-pulse">
-              <RotateCcw className="w-12 h-12 text-cyan-400 animate-spin-slow" />
+          <div className="relative mb-5">
+            <div className="w-20 h-20 rounded-full bg-[#12141A] border border-[#00E5FF]/50 flex items-center justify-center">
+              <RotateCcw className="w-10 h-10 text-[#00E5FF] animate-spin-slow" />
             </div>
-            <div className="absolute -bottom-1 -right-1 bg-[#12151c] p-1.5 rounded-full border border-cyan-400 shadow-lg">
-              <Smartphone className="w-5 h-5 text-cyan-300" />
+            <div className="absolute -bottom-1 -right-1 bg-[#12141A] p-1.5 rounded-full border border-white/25">
+              <Smartphone className="w-4 h-4 text-[#F5A623]" />
             </div>
           </div>
 
           <h2 className="text-2xl font-bold font-display tracking-wide text-white mb-2">
-            ROTATE TO LANDSCAPE
+            Rotate to Landscape
           </h2>
           <p className="text-gray-300 text-sm leading-relaxed mb-6 px-2">
-            Hold your phone horizontally with two hands like a GT3 paddle-shift steering wheel for ultra-low latency control.
+            Hold your phone horizontally with two hands like a racing wheel for low-latency gyro steering.
           </p>
 
           <button
             onClick={requestFullscreenLandscape}
-            className="w-full py-4 px-6 bg-gradient-to-r from-cyan-500 via-sky-500 to-purple-600 text-white font-bold font-display text-base tracking-wider uppercase rounded-2xl shadow-xl shadow-cyan-500/30 transition-all transform active:scale-95 flex items-center justify-center space-x-2 border border-cyan-300/40"
+            className="w-full py-3.5 px-6 bg-[#FF3B30] hover:bg-[#ff5147] text-white font-bold font-display text-base tracking-wider uppercase rounded-lg transition-all active:scale-95 flex items-center justify-center space-x-2"
           >
             <Maximize className="w-5 h-5" />
-            <span>ENTER LANDSCAPE COCKPIT</span>
+            <span>Enter Landscape Cockpit</span>
           </button>
 
           <button
@@ -668,9 +668,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
               setForceLandscapeView(true);
               setTimeout(() => recalibrate(), 120);
             }}
-            className="w-full mt-3 py-3 px-4 bg-white/10 hover:bg-white/15 rounded-xl text-xs font-bold uppercase tracking-wider text-cyan-300 border border-white/10 transition-all"
+            className="w-full mt-3 py-3 px-4 bg-[#12141A] hover:bg-white/10 rounded-lg text-xs font-bold uppercase tracking-wider text-[#00E5FF] border border-white/15 transition-colors"
           >
-            FORCE HORIZONTAL VIEW (IF AUTO-ROTATE LOCKED)
+            Force Horizontal View
           </button>
         </div>
 
@@ -683,7 +683,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ roomId }) =>
             }}
             className="text-xs text-gray-400 hover:text-white underline underline-offset-4 tracking-wider"
           >
-            Or tap here to drive in Portrait Wheel mode
+            Or drive in Portrait mode
           </button>
         </div>
       </div>

@@ -175,8 +175,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           isRevving={isHomeRevving}
           onRevClick={handleHomeRev}
           showControls={true}
-          controlsAlign="bottom-right"
-          targetOffsetX={-1.05}
+          controlsClassName="bottom-12 right-5 lg:bottom-14 lg:right-8"
+          targetOffsetX={-0.78}
+          cameraDistanceScale={1.26}
         />
       </div>
 
