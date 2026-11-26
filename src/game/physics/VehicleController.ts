@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { ControllerInput, VehicleTelemetry, SuperCarConfig, SUPER_CARS } from '../../types';
+import {
+  ControllerInput,
+  VehicleTelemetry,
+  SuperCarConfig,
+  SUPER_CARS,
+  TransmissionMode
+} from '../../types';
+import { loadStoredRecords, saveBestLapRecord, saveBestScoreRecord } from '../../utils/records';
 
 const GEAR_ORDER: (number | 'R' | 'N')[] = ['R', 'N', 1, 2, 3, 4, 5, 6];
 
@@ -20,7 +27,8 @@ export class VehiclePhysics {
   public rotation: THREE.Euler = new THREE.Euler(0, 0, 0, 'YXZ');
   public quaternion: THREE.Quaternion = new THREE.Quaternion();
 
-  // Telemetry & States (Manual 6-Speed Sequential Gearbox!)
+  // Telemetry & States (Switchable 6-Speed Automatic DCT or Sequential Manual!)
+  public transmissionMode: TransmissionMode = 'auto';
   public speedKmh: number = 0;
   public rpm: number = 850;
   public gear: number | string = 1; // Starts in Gear 1 ready for launch
@@ -37,7 +45,11 @@ export class VehiclePhysics {
   private driftTimer: number = 0;
   public isAirborne: boolean = false;
   public isJumping: boolean = false;
+  public didJustLand: boolean = false;
+  public lastLandingStrength: number = 0;
   public jumpAirTimer: number = 0;
+  private prevAirborne: boolean = false;
+  private airbornePeakVel: number = 0;
   public health: number = 100;
 
   // Lap & Wrong-Way Telemetry
@@ -45,6 +57,10 @@ export class VehiclePhysics {
   public lapTimeMs: number = 0;
   public raceTimeMs: number = 0;
   public bestLapTimeMs: number | null = null;
+  public didCompleteLap: boolean = false;
+  public lastCompletedLapMs: number = 0;
+  public didSetBestLap: boolean = false;
+  private newBestLapBannerTimer: number = 0;
   public trackProgress: number = 0;
   public isWrongWay: boolean = false;
   private prevSplineT: number = 0.001;
@@ -52,6 +68,7 @@ export class VehiclePhysics {
   private wrongWayTimer: number = 0;
 
   // Supercar Performance Specs (Driven by selected SuperCarConfig)
+  public carConfigId: string = SUPER_CARS[0].id;
   public maxSpeedKmh: number = 310;
   public maxNitroSpeedKmh: number = 345;
   public accelerationRate: number = 7.4;
@@ -68,26 +85,41 @@ export class VehiclePhysics {
   private currentSteerAngle: number = 0;
   private verticalVelocity: number = 0;
   private groundHeight: number = 0;
+  private smoothedRoadPitch: number = 0;
   private lateralSlipVelocity: number = 0;
   private smoothedThrottle: number = 0;
   private neutralFreeRev: number = 850;
   private prevCountdownLocked: boolean = false;
   private manualUpshiftHoldTimer: number = 0;
-  private autoDownshiftCooldown: number = 0;
+  private autoShiftCooldown: number = 0;
+  private autoReverseHoldTimer: number = 0;
+  private manualIdleTimer: number = 0;
   public didAutoShiftDown: boolean = false;
+  public didAutoShiftUp: boolean = false;
 
   // Collision state
   public hadBarrierCollision: boolean = false;
 
   constructor(
     initialPosition: THREE.Vector3 = new THREE.Vector3(0, 0.64, 10),
-    carConfig: SuperCarConfig = SUPER_CARS[0]
+    carConfig: SuperCarConfig = SUPER_CARS[0],
+    transmissionMode: TransmissionMode = 'auto'
   ) {
     this.position.copy(initialPosition);
+    this.transmissionMode = transmissionMode;
+    this.bestLapTimeMs = loadStoredRecords().bestLapMs;
     this.applyCarConfig(carConfig);
   }
 
+  public setTransmissionMode(mode: TransmissionMode) {
+    this.transmissionMode = mode;
+    if (mode === 'auto' && this.gear === 'N') {
+      this.gear = 1;
+    }
+  }
+
   public applyCarConfig(config: SuperCarConfig) {
+    this.carConfigId = config.id;
     this.maxSpeedKmh = config.topSpeedKmh;
     this.accelerationRate = config.accelerationRate;
     this.handlingScore = config.handlingScore;
@@ -148,12 +180,19 @@ export class VehiclePhysics {
     this.hadBarrierCollision = false;
     this.didJustBankDrift = false;
     this.didAutoShiftDown = false;
+    this.didAutoShiftUp = false;
+    this.didJustLand = false;
+    this.didCompleteLap = false;
+    this.didSetBestLap = false;
 
     if (this.manualUpshiftHoldTimer > 0) {
       this.manualUpshiftHoldTimer = Math.max(0, this.manualUpshiftHoldTimer - delta);
     }
-    if (this.autoDownshiftCooldown > 0) {
-      this.autoDownshiftCooldown = Math.max(0, this.autoDownshiftCooldown - delta);
+    if (this.autoShiftCooldown > 0) {
+      this.autoShiftCooldown = Math.max(0, this.autoShiftCooldown - delta);
+    }
+    if (this.newBestLapBannerTimer > 0) {
+      this.newBestLapBannerTimer = Math.max(0, this.newBestLapBannerTimer - delta);
     }
 
     if (this.lastBankTimer > 0) {
@@ -190,6 +229,7 @@ export class VehiclePhysics {
         speedKmh: 0,
         rpm: Math.round(this.rpm),
         gear: 'N',
+        transmissionMode: this.transmissionMode,
         nitroFuel: Math.round(this.nitroFuel),
         isDrifting: false,
         driftScore: 0,
@@ -197,6 +237,8 @@ export class VehiclePhysics {
         lastBankedDrift: this.lastBankedDrift,
         isAirborne: false,
         isJumping: false,
+        didJustLand: false,
+        isNewBestLap: false,
         health: Math.max(0, Math.round(this.health)),
         lap: this.lap,
         lapTimeMs: 0,
@@ -230,27 +272,48 @@ export class VehiclePhysics {
       this.nitroFuel = Math.min(100, this.nitroFuel + delta * 3.8);
     }
 
-    // 4. Pure Manual Gearbox Torque, Speed Ceilings, Compression Braking, & Reverse
+    // 4. Dual-Mode (Auto 6-Speed DCT / Manual Sequential) Gearbox Torque, Braking & Reverse
     let forwardSpeed = this.velocity.z;
     const isBrakeDriftCombo =
       input.brake > 0.2 && input.throttle > 0.2 && Math.abs(input.steer) > 0.25 && this.speedKmh > 38;
 
     const gearTorques = [1.42, 1.18, 1.0, 0.86, 0.74, 0.65];
 
-    if (input.brake > 0.05 && !isBrakeDriftCombo) {
-      this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, 0, Math.min(1, delta * 24.0));
-      if (Math.abs(forwardSpeed) > 0.4) {
-        forwardSpeed -= Math.sign(forwardSpeed) * input.brake * this.brakingRate * delta;
-        if (Math.abs(forwardSpeed) < 0.4) forwardSpeed = 0;
+    // Automatic transmission seamless Stop-to-Reverse & Reverse-to-Drive handling
+    if (this.transmissionMode === 'auto') {
+      if (this.gear === 'R' && input.throttle > 0.1) {
+        this.gear = 1;
+        this.autoReverseHoldTimer = 0;
+      } else if (input.brake > 0.25 && !isBrakeDriftCombo && Math.abs(forwardSpeed) < 1.35 && this.gear !== 'R') {
+        this.autoReverseHoldTimer += delta;
+        if (this.autoReverseHoldTimer >= 0.16) {
+          this.gear = 'R';
+          this.autoReverseHoldTimer = 0;
+        }
       } else {
-        forwardSpeed = 0;
+        this.autoReverseHoldTimer = 0;
       }
-    } else if (this.gear === 'R') {
-      // REVERSE GEAR: Throttle drives backwards smoothly
-      if (input.throttle > 0.01) {
-        this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, input.throttle, Math.min(1, delta * 7.0));
+    } else {
+      this.autoReverseHoldTimer = 0;
+    }
+
+    // Effective reverse drive input: in AUTO mode, Brake/S drives reverse; in MANUAL mode, Throttle/W drives Reverse when 'R' is selected
+    const autoReverseThrottle = this.transmissionMode === 'auto' && this.gear === 'R' ? input.brake : 0;
+
+    if (this.gear === 'R') {
+      const revPedal = this.transmissionMode === 'auto' ? autoReverseThrottle : input.throttle;
+      if (this.transmissionMode === 'manual' && input.brake > 0.05) {
+        this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, 0, Math.min(1, delta * 24.0));
+        if (Math.abs(forwardSpeed) > 0.4) {
+          forwardSpeed -= Math.sign(forwardSpeed) * input.brake * this.brakingRate * delta;
+          if (Math.abs(forwardSpeed) < 0.4) forwardSpeed = 0;
+        } else {
+          forwardSpeed = 0;
+        }
+      } else if (revPedal > 0.01) {
+        this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, revPedal, Math.min(1, delta * 7.0));
         if (forwardSpeed > 0.2) {
-          forwardSpeed -= this.brakingRate * 0.7 * delta;
+          forwardSpeed -= this.brakingRate * 0.75 * delta;
         } else if (forwardSpeed > -15.5) {
           forwardSpeed -= this.smoothedThrottle * (this.accelerationRate * 0.68) * delta;
         }
@@ -262,6 +325,14 @@ export class VehiclePhysics {
           forwardSpeed = 0;
         }
       }
+    } else if (input.brake > 0.05 && !isBrakeDriftCombo) {
+      this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, 0, Math.min(1, delta * 24.0));
+      if (Math.abs(forwardSpeed) > 0.4) {
+        forwardSpeed -= Math.sign(forwardSpeed) * input.brake * this.brakingRate * delta;
+        if (Math.abs(forwardSpeed) < 0.4) forwardSpeed = 0;
+      } else {
+        forwardSpeed = 0;
+      }
     } else if (this.gear === 'N') {
       // NEUTRAL GEAR: Free coasting, throttle revs engine freely without drive torque
       this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, input.throttle, Math.min(1, delta * 9.0));
@@ -272,7 +343,7 @@ export class VehiclePhysics {
         forwardSpeed = 0;
       }
     } else {
-      // FORWARD GEARS 1..6 (Strict Manual Gear Ratios!)
+      // FORWARD GEARS 1..6
       const gearNum = typeof this.gear === 'number' ? this.gear : 1;
       const baseGearTopKmh = this.getGearTopSpeedKmh(gearNum);
       const gearTopKmh =
@@ -299,12 +370,10 @@ export class VehiclePhysics {
             Math.max(0.18, 1.0 - speedFraction * 0.45);
           forwardSpeed = Math.min(gearTopMs, forwardSpeed + (engineAccel + nitroThrust) * delta);
         } else if (forwardSpeed > gearTopMs + 1.2) {
-          // Hit gear speed ceiling / rev limiter! Gentle compression hold
           forwardSpeed -= 6.5 * delta;
         }
       } else {
         this.smoothedThrottle = THREE.MathUtils.lerp(this.smoothedThrottle, 0, Math.min(1, delta * 8.0));
-        // Over-rev engine braking if downshifted aggressively above current gear max!
         const excessBrake = forwardSpeed > gearTopMs + 1.0 ? 8.5 : 0;
         const dragForce = this.naturalFriction + excessBrake + forwardSpeed * forwardSpeed * this.aeroDragCoeff;
         if (Math.abs(forwardSpeed) > 0.12) {
@@ -381,6 +450,7 @@ export class VehiclePhysics {
             this.lastBankedDrift = this.driftScore;
             this.lastBankTimer = 2.0;
             this.didJustBankDrift = true;
+            saveBestScoreRecord(this.totalScore);
           }
           if (this.driftTimer > 0.6 && this.speedKmh > 45 && typeof this.gear === 'number') {
             forwardSpeed = Math.min((this.maxNitroSpeedKmh * 1000) / 3600, forwardSpeed + 3.4);
@@ -403,6 +473,7 @@ export class VehiclePhysics {
         this.lastBankedDrift = this.driftScore;
         this.lastBankTimer = 2.0;
         this.didJustBankDrift = true;
+        saveBestScoreRecord(this.totalScore);
       }
       this.driftScore = 0;
       this.isDrifting = false;
@@ -414,12 +485,13 @@ export class VehiclePhysics {
     this.headingAngle = normalizeAngle(this.headingAngle + turnRate * delta);
     this.driftAngle = this.isDrifting ? Math.abs(Math.round(THREE.MathUtils.radToDeg(this.driftYawAngle))) : 0;
 
-    // 7. Vertical Suspension & Jump Gravity
+    // 7. Vertical Suspension, Jump Gravity & Touchdown Detection
     const isAboveGround = this.position.y > targetSuspensionY + 0.05;
 
     if (isAboveGround || this.verticalVelocity > 0) {
       this.isAirborne = true;
       this.verticalVelocity -= 24.0 * delta;
+      this.airbornePeakVel = Math.max(this.airbornePeakVel, Math.abs(this.verticalVelocity));
       this.position.y += this.verticalVelocity * delta;
 
       if (this.jumpAirTimer > 0) {
@@ -432,15 +504,26 @@ export class VehiclePhysics {
         this.verticalVelocity = 0;
         this.isAirborne = false;
         this.isJumping = false;
+        if (this.prevAirborne && this.airbornePeakVel > 6.5) {
+          this.didJustLand = true;
+          this.lastLandingStrength = THREE.MathUtils.clamp(this.airbornePeakVel / 18, 0.3, 1.0);
+        }
         this.jumpAirTimer = 0;
+        this.airbornePeakVel = 0;
       }
     } else {
+      if (this.prevAirborne && this.airbornePeakVel > 6.5) {
+        this.didJustLand = true;
+        this.lastLandingStrength = THREE.MathUtils.clamp(this.airbornePeakVel / 18, 0.3, 1.0);
+      }
       this.isAirborne = false;
       this.isJumping = false;
       this.jumpAirTimer = 0;
+      this.airbornePeakVel = 0;
       this.position.y = targetSuspensionY;
       this.verticalVelocity = 0;
     }
+    this.prevAirborne = this.isAirborne;
 
     // 8. World Translation
     const forwardX = Math.sin(this.headingAngle) * forwardSpeed * delta;
@@ -452,7 +535,8 @@ export class VehiclePhysics {
     this.position.x += forwardX + latX;
     this.position.z += forwardZ + latZ;
 
-    // 9. Track Containment, Guardrail Glance, Lap Counting & Wrong-Way Check
+    // 9. Track Containment, Guardrail Glance, Lap Counting, Road Slope Pitch & Wrong-Way Check
+    let targetRoadSlopePitch = 0;
     if (closestPointFunc) {
       const { point, tangent, dist, t } = closestPointFunc(this.position.x, this.position.z);
       this.trackProgress = t;
@@ -461,9 +545,15 @@ export class VehiclePhysics {
         this.passedMidpoint = true;
       }
       if (this.prevSplineT > 0.85 && t < 0.15 && this.passedMidpoint) {
-        if (this.bestLapTimeMs === null || this.lapTimeMs < this.bestLapTimeMs) {
-          this.bestLapTimeMs = Math.round(this.lapTimeMs);
+        const finishedLapMs = Math.round(this.lapTimeMs);
+        this.didCompleteLap = true;
+        this.lastCompletedLapMs = finishedLapMs;
+        if (this.bestLapTimeMs === null || finishedLapMs < this.bestLapTimeMs) {
+          this.bestLapTimeMs = finishedLapMs;
+          this.didSetBestLap = true;
+          this.newBestLapBannerTimer = 3.2;
         }
+        saveBestLapRecord(finishedLapMs, this.carConfigId);
         this.lap += 1;
         this.lapTimeMs = 0;
         this.passedMidpoint = false;
@@ -473,6 +563,10 @@ export class VehiclePhysics {
       const fwdX = Math.sin(this.headingAngle);
       const fwdZ = Math.cos(this.headingAngle);
       const dotTangent = fwdX * tangent.x + fwdZ * tangent.z;
+
+      // Align chassis elevation pitch with alpine/descent road slope!
+      const rawSlopeSin = THREE.MathUtils.clamp(tangent.y * dotTangent, -0.42, 0.42);
+      targetRoadSlopePitch = -Math.asin(rawSlopeSin);
 
       if (dotTangent < -0.45 && this.speedKmh > 25 && forwardSpeed > 0.5) {
         this.wrongWayTimer += delta;
@@ -513,28 +607,61 @@ export class VehiclePhysics {
       }
     }
 
-    // 10. Dynamic Suspension Pitch & Body Roll
+    // 10. Dynamic Suspension Pitch (Hill Slope + Throttle Squat / Brake Dive) & Body Roll
+    this.smoothedRoadPitch = THREE.MathUtils.lerp(this.smoothedRoadPitch, targetRoadSlopePitch, Math.min(1, delta * 9.5));
+    const airPitch = this.isAirborne ? THREE.MathUtils.clamp(-this.verticalVelocity * 0.015, -0.22, 0.22) : 0;
     const targetRoll = this.isDrifting ? -this.currentSteerAngle * 0.42 : -this.currentSteerAngle * 0.16;
     const drivePitchSign = this.gear === 'R' ? 0.025 : -0.032;
-    const targetPitch = this.smoothedThrottle * drivePitchSign + input.brake * 0.068;
+    const targetPitch = this.smoothedRoadPitch + airPitch + this.smoothedThrottle * drivePitchSign + input.brake * 0.068;
 
     this.rotation.set(targetPitch, this.headingAngle + this.driftYawAngle, targetRoll, 'YXZ');
     this.quaternion.setFromEuler(this.rotation);
 
-    // 10b. Speed-Based Auto Downshift (Forward gears 6 -> 5 -> 4 -> 3 -> 2 -> 1; manual upshift only!)
+    // 10b. Transmission Management (AUTO: upshift + downshift; MANUAL: player control + standstill stall protection)
     if (input.brake > 0.1 || this.hadBarrierCollision) {
       this.manualUpshiftHoldTimer = 0;
     }
-    if (typeof this.gear === 'number' && this.gear > 1) {
-      const downshiftThreshold = this.getGearDownshiftSpeedKmh(this.gear);
-      if (this.speedKmh < downshiftThreshold && this.manualUpshiftHoldTimer <= 0 && this.autoDownshiftCooldown <= 0) {
-        this.gear = this.gear - 1;
-        this.didAutoShiftDown = true;
-        this.autoDownshiftCooldown = 0.16;
+
+    if (typeof this.gear === 'number') {
+      if (this.transmissionMode === 'auto') {
+        const gearTopKmh = this.getGearTopSpeedKmh(this.gear);
+        const upshiftTriggerKmh = gearTopKmh * 0.945;
+        if (
+          this.gear < 6 &&
+          (this.rpm >= 7750 || this.speedKmh >= upshiftTriggerKmh) &&
+          this.smoothedThrottle > 0.22 &&
+          this.autoShiftCooldown <= 0 &&
+          this.manualUpshiftHoldTimer <= 0 &&
+          (!this.isDrifting || this.rpm >= 8200)
+        ) {
+          this.gear = this.gear + 1;
+          this.didAutoShiftUp = true;
+          this.autoShiftCooldown = 0.28;
+        } else if (
+          this.gear > 1 &&
+          this.speedKmh < this.getGearDownshiftSpeedKmh(this.gear) &&
+          this.manualUpshiftHoldTimer <= 0 &&
+          this.autoShiftCooldown <= 0
+        ) {
+          this.gear = this.gear - 1;
+          this.didAutoShiftDown = true;
+          this.autoShiftCooldown = 0.18;
+        }
+      } else {
+        // Manual mode: let player downshift & upshift cleanly; only rescue from complete stop stall (< 3 km/h idle)
+        if (this.gear > 1 && this.speedKmh < 3 && this.smoothedThrottle < 0.08) {
+          this.manualIdleTimer += delta;
+          if (this.manualIdleTimer > 0.55) {
+            this.gear = 1;
+            this.manualIdleTimer = 0;
+          }
+        } else {
+          this.manualIdleTimer = 0;
+        }
       }
     }
 
-    // 11. Manual Gearbox RPM Curve + Rev Limiter Bounce
+    // 11. RPM Curve + Rev Limiter Bounce
     this.calculateManualRpm(delta);
 
     // 12. Manual Reset
@@ -543,12 +670,17 @@ export class VehiclePhysics {
     }
 
     const shouldShiftUp =
-      typeof this.gear === 'number' && this.gear < 6 && this.rpm > 7250 && this.smoothedThrottle > 0.1;
+      this.transmissionMode === 'manual' &&
+      typeof this.gear === 'number' &&
+      this.gear < 6 &&
+      this.rpm > 7250 &&
+      this.smoothedThrottle > 0.1;
 
     return {
       speedKmh: this.speedKmh,
       rpm: Math.round(this.rpm),
       gear: this.gear,
+      transmissionMode: this.transmissionMode,
       nitroFuel: Math.round(this.nitroFuel),
       isDrifting: this.isDrifting,
       driftScore: this.driftScore,
@@ -556,6 +688,8 @@ export class VehiclePhysics {
       lastBankedDrift: this.lastBankedDrift,
       isAirborne: this.isAirborne,
       isJumping: this.isJumping,
+      didJustLand: this.didJustLand,
+      isNewBestLap: this.newBestLapBannerTimer > 0,
       health: Math.max(0, Math.round(this.health)),
       lap: this.lap,
       lapTimeMs: Math.round(this.lapTimeMs),
@@ -617,6 +751,7 @@ export class VehiclePhysics {
 
   public launchRamp(upwardImpulse: number = 14.0) {
     this.verticalVelocity = upwardImpulse;
+    this.velocity.z += 2.2;
     this.isAirborne = true;
     this.isJumping = true;
     this.jumpAirTimer = 0.01;
@@ -631,8 +766,15 @@ export class VehiclePhysics {
     this.gear = 1;
     this.rpm = 880;
     this.manualUpshiftHoldTimer = 0;
-    this.autoDownshiftCooldown = 0;
+    this.autoShiftCooldown = 0;
+    this.autoReverseHoldTimer = 0;
+    this.manualIdleTimer = 0;
     this.didAutoShiftDown = false;
+    this.didAutoShiftUp = false;
+    this.didJustLand = false;
+    this.prevAirborne = false;
+    this.airbornePeakVel = 0;
+    this.smoothedRoadPitch = 0;
     this.driftScore = 0;
     this.isDrifting = false;
     this.isAirborne = false;
@@ -656,6 +798,9 @@ export class VehiclePhysics {
     this.trackProgress = 0;
     this.prevSplineT = 0.001;
     this.passedMidpoint = false;
+    this.didCompleteLap = false;
+    this.didSetBestLap = false;
+    this.newBestLapBannerTimer = 0;
     this.totalScore = 0;
     this.lastBankedDrift = 0;
   }

@@ -15,10 +15,23 @@ export interface ControllerInput {
   timestamp: number;
 }
 
+export type TransmissionMode = 'auto' | 'manual';
+
+export interface GhostFrame {
+  timeMs: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+  roll: number;
+}
+
 export interface VehicleTelemetry {
   speedKmh: number;
   rpm: number;
   gear: number | string; // 'R', 'N', 1..6
+  transmissionMode?: TransmissionMode;
   nitroFuel: number;    // 0 to 100
   isDrifting: boolean;
   driftScore: number;
@@ -26,6 +39,8 @@ export interface VehicleTelemetry {
   lastBankedDrift?: number;
   isAirborne: boolean;
   isJumping: boolean;   // Asphalt 9 cinematic jump active
+  didJustLand?: boolean;
+  isNewBestLap?: boolean;
   health: number;       // 0 to 100
   isOnCurb?: boolean;   // Wheels riding red/white rumble strip
   isWrongWay?: boolean;
@@ -41,6 +56,7 @@ export interface VehicleTelemetry {
 export interface GameSettings {
   graphicsQuality: 'ultra' | 'high' | 'medium';
   defaultCamera: 'chase' | 'hood';
+  transmissionMode: TransmissionMode;
   isMuted: boolean;
   gyroSensitivity: number;
 }
@@ -48,6 +64,7 @@ export interface GameSettings {
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
   graphicsQuality: 'ultra',
   defaultCamera: 'chase',
+  transmissionMode: 'auto',
   isMuted: false,
   gyroSensitivity: 1.2
 };
