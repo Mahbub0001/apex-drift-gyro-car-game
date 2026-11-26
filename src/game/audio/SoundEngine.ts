@@ -1,6 +1,7 @@
 export class SoundEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
+  private isPaused: boolean = false;
   private isInitialized: boolean = false;
 
   // 1. Engine Core Synthesis
@@ -259,7 +260,7 @@ export class SoundEngine {
     isOnCurb: boolean = false,
     isBraking: boolean = false
   ) {
-    if (!this.ctx || !this.isInitialized || this.isMuted) return;
+    if (!this.ctx || !this.isInitialized || this.isMuted || this.isPaused) return;
 
     if (this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
@@ -710,10 +711,30 @@ export class SoundEngine {
     } catch (_) {}
   }
 
+  public setPaused(paused: boolean) {
+    this.isPaused = paused;
+    if (!this.ctx || !this.isInitialized) return;
+    const now = this.ctx.currentTime;
+
+    if (paused) {
+      // Smoothly silence all continuous Web Audio channels so pause never loops skid/engine/nitro drones
+      this.masterGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.engineGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.turboGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.windGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.skidGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.nitroGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.curbGain?.gain.setTargetAtTime(0, now, 0.02);
+      this.brakeSquealGain?.gain.setTargetAtTime(0, now, 0.02);
+    } else if (this.masterGain) {
+      this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : 0.85, now, 0.04);
+    }
+  }
+
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.85, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(this.isMuted || this.isPaused ? 0 : 0.85, this.ctx.currentTime);
     }
     return this.isMuted;
   }

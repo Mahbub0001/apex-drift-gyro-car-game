@@ -8,6 +8,7 @@ export interface CarMeshes {
   bodyMaterial: THREE.MeshPhysicalMaterial;
   wheels: THREE.Object3D[];
   frontWheels: THREE.Object3D[];
+  wheelSpinSign: number;
   carConfig: SuperCarConfig;
   applyDamageVisuals: (health: number) => void;
 }
@@ -53,41 +54,60 @@ function loadFerrariGltf(): Promise<THREE.Group> {
 
 export function createSportsCar(
   carConfig: SuperCarConfig = SUPER_CARS[0],
-  onLoadCallback?: (meshes: CarMeshes) => void
+  onLoadCallback?: (meshes: CarMeshes) => void,
+  options: { isGhost?: boolean } = {}
 ): CarMeshes {
+  const isGhost = !!options.isGhost;
   const root = new THREE.Group();
 
-  // 1. Photorealistic Multi-Coat Metallic PBR Car Paint
-  const bodyMaterial = new THREE.MeshPhysicalMaterial({
-    color: carConfig.bodyColorHex,
-    metalness: 0.92,
-    roughness: 0.12,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.03,
-    reflectivity: 1.0
-  });
+  // 1. Photorealistic Multi-Coat Metallic PBR Car Paint (or Holographic Ghost shader)
+  const bodyMaterial = isGhost
+    ? new THREE.MeshPhysicalMaterial({
+        color: 0x00e5ff,
+        emissive: 0x0088cc,
+        emissiveIntensity: 0.75,
+        metalness: 0.25,
+        roughness: 0.15,
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false
+      })
+    : new THREE.MeshPhysicalMaterial({
+        color: carConfig.bodyColorHex,
+        metalness: 0.92,
+        roughness: 0.12,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.03,
+        reflectivity: 1.0
+      });
 
-  const rimMaterial = new THREE.MeshStandardMaterial({
-    color: carConfig.accentColorHex,
-    metalness: 0.92,
-    roughness: 0.18
-  });
+  const rimMaterial = isGhost
+    ? bodyMaterial
+    : new THREE.MeshStandardMaterial({
+        color: carConfig.accentColorHex,
+        metalness: 0.92,
+        roughness: 0.18
+      });
 
-  const carbonMaterial = new THREE.MeshStandardMaterial({
-    color: 0x18181c,
-    metalness: 0.85,
-    roughness: 0.35
-  });
+  const carbonMaterial = isGhost
+    ? bodyMaterial
+    : new THREE.MeshStandardMaterial({
+        color: 0x18181c,
+        metalness: 0.85,
+        roughness: 0.35
+      });
 
-  const glassMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x0a1018,
-    metalness: 0.1,
-    roughness: 0.04,
-    transmission: 0.92,
-    thickness: 0.65,
-    transparent: true,
-    opacity: 0.85
-  });
+  const glassMaterial = isGhost
+    ? bodyMaterial
+    : new THREE.MeshPhysicalMaterial({
+        color: 0x0a1018,
+        metalness: 0.1,
+        roughness: 0.04,
+        transmission: 0.92,
+        thickness: 0.65,
+        transparent: true,
+        opacity: 0.85
+      });
 
   const wheels: THREE.Object3D[] = [];
   const frontWheels: THREE.Object3D[] = [];
@@ -101,6 +121,7 @@ export function createSportsCar(
 
   // Apply Realtime Visible Damage
   const applyDamageVisuals = (health: number) => {
+    if (isGhost) return;
     const damagePercent = Math.max(0, Math.min(100, health));
     const damageFactor = (100 - damagePercent) / 100; // 0.0 (pristine) to 1.0 (wrecked)
 
@@ -121,6 +142,16 @@ export function createSportsCar(
     }
   };
 
+  const result: CarMeshes = {
+    root,
+    bodyMaterial,
+    wheels,
+    frontWheels,
+    wheelSpinSign: 1,
+    carConfig,
+    applyDamageVisuals
+  };
+
   // Load and apply authentic high-poly 3D sports car model
   loadFerrariGltf()
     .then((baseModel) => {
@@ -133,10 +164,12 @@ export function createSportsCar(
       carModel.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
+          mesh.castShadow = !isGhost;
+          mesh.receiveShadow = !isGhost;
 
-          if (mesh.name === 'body') {
+          if (isGhost) {
+            mesh.material = bodyMaterial;
+          } else if (mesh.name === 'body') {
             mesh.material = bodyMaterial;
           } else if (mesh.name.startsWith('rim_')) {
             mesh.material = rimMaterial;
@@ -148,24 +181,26 @@ export function createSportsCar(
         }
       });
 
-      // Ground Ambient Occlusion Shadow
-      const textureLoader = new THREE.TextureLoader();
-      textureLoader.load('/models/ferrari_ao.png', (aoTexture) => {
-        const shadowMesh = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.655 * 4, 1.3 * 4),
-          new THREE.MeshBasicMaterial({
-            map: aoTexture,
-            blending: THREE.MultiplyBlending,
-            toneMapped: false,
-            transparent: true,
-            opacity: 0.82
-          })
-        );
-        shadowMesh.rotation.x = -Math.PI / 2;
-        shadowMesh.position.y = 0.015;
-        shadowMesh.renderOrder = 2;
-        carModel.add(shadowMesh);
-      });
+      // Ground Ambient Occlusion Shadow (skip for ghost)
+      if (!isGhost) {
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load('/models/ferrari_ao.png', (aoTexture) => {
+          const shadowMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.655 * 4, 1.3 * 4),
+            new THREE.MeshBasicMaterial({
+              map: aoTexture,
+              blending: THREE.MultiplyBlending,
+              toneMapped: false,
+              transparent: true,
+              opacity: 0.82
+            })
+          );
+          shadowMesh.rotation.x = -Math.PI / 2;
+          shadowMesh.position.y = 0.015;
+          shadowMesh.renderOrder = 2;
+          carModel.add(shadowMesh);
+        });
+      }
 
       // Find GLB wheels
       const wheelFL = carModel.getObjectByName('wheel_fl');
@@ -188,36 +223,16 @@ export function createSportsCar(
       // Swap out placeholder with authentic 3D car model
       root.remove(placeholder);
       root.add(carModel);
+      result.wheelSpinSign = -1; // GLB child rotated PI around Y: wheel +X spin rolls opposite to world +Z
 
-      onLoadCallback?.({
-        root,
-        bodyMaterial,
-        wheels,
-        frontWheels,
-        carConfig,
-        applyDamageVisuals
-      });
+      onLoadCallback?.(result);
     })
     .catch((err) => {
       console.warn('[CarModel] Fallback to procedural sports car:', err);
-      onLoadCallback?.({
-        root,
-        bodyMaterial,
-        wheels,
-        frontWheels,
-        carConfig,
-        applyDamageVisuals
-      });
+      onLoadCallback?.(result);
     });
 
-  return {
-    root,
-    bodyMaterial,
-    wheels,
-    frontWheels,
-    carConfig,
-    applyDamageVisuals
-  };
+  return result;
 }
 
 // Attaches distinct aerodynamic packages (GT3 swan-neck wings, hypercar splitters)

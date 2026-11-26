@@ -12,8 +12,11 @@ import {
   SuperCarConfig,
   SUPER_CARS,
   GameSettings,
-  DEFAULT_GAME_SETTINGS
+  DEFAULT_GAME_SETTINGS,
+  TransmissionMode,
+  GhostFrame
 } from '../../types';
+import { loadSavedGhost, saveBestGhost } from '../../utils/records';
 
 interface OpponentCarEntity {
   id: string;
@@ -178,6 +181,26 @@ export class GameEngine {
   private smokeGeo!: THREE.SphereGeometry;
   private smokeMat!: THREE.MeshStandardMaterial;
 
+  // Drift Tire Smoke & Collision Sparks Pools (zero hot-loop allocations)
+  private driftSmokePool: { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }[] = [];
+  private driftSmokeGeo!: THREE.SphereGeometry;
+  private driftSmokeMat!: THREE.MeshStandardMaterial;
+  private driftSmokeCooldown: number = 0;
+
+  private sparkPool: { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }[] = [];
+  private sparkGeo!: THREE.BoxGeometry;
+  private sparkMat!: THREE.MeshBasicMaterial;
+
+  // Holographic Best-Lap Ghost / Pace Car & Dynamic Tunnel Beam
+  private ghostMeshes: CarMeshes | null = null;
+  private savedGhostFrames: GhostFrame[] | null = null;
+  private ghostRecordingFrames: GhostFrame[] = [];
+  private ghostSampleTimer: number = 0;
+  private ghostPaceT: number = 0.004;
+  private isMultiplayerActive: boolean = false;
+  private tunnelHeadlight: THREE.PointLight | null = null;
+  private smoothJumpTilt: number = 0;
+
   public isLetterboxed: boolean = false;
 
   constructor(
@@ -237,8 +260,12 @@ export class GameEngine {
     // 4. Dynamic Civilian Traffic AI
     this.trafficManager = new TrafficManager(this.scene, this.track.splineCurve);
 
-    // 5. Local Player Car with complete carConfig physics wiring
-    this.vehiclePhysics = new VehiclePhysics(new THREE.Vector3(0, 0.64, 10), carConfig);
+    // 5. Local Player Car with complete carConfig & transmissionMode wiring
+    this.vehiclePhysics = new VehiclePhysics(
+      new THREE.Vector3(0, 0.64, 10),
+      carConfig,
+      initialSettings.transmissionMode || 'auto'
+    );
 
     this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       if (this.isDisposed) return;
@@ -250,9 +277,23 @@ export class GameEngine {
     this.setupNitroFlames();
     this.setupTaillights();
     this.setupDamageSmoke();
+    this.setupDriftSmokeAndSparks();
+    this.setupGhostCar(carConfig);
+    this.setupTunnelHeadlight();
     this.setupSkidMarkPool();
 
     this.applyGraphicsSettings(initialSettings);
+  }
+
+  public setTransmissionMode(mode: TransmissionMode) {
+    this.vehiclePhysics.setTransmissionMode(mode);
+  }
+
+  public setMultiplayerActive(active: boolean) {
+    this.isMultiplayerActive = active;
+    if (this.ghostMeshes) {
+      this.ghostMeshes.root.visible = !active;
+    }
   }
 
   public applyGraphicsSettings(settings: GameSettings) {
@@ -430,20 +471,255 @@ export class GameEngine {
     }
   }
 
+  private setupDriftSmokeAndSparks() {
+    this.driftSmokeGeo = new THREE.SphereGeometry(0.28, 7, 7);
+    this.driftSmokeMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      transparent: true,
+      opacity: 0.36,
+      roughness: 1.0,
+      depthWrite: false
+    });
+
+    for (let i = 0; i < 18; i++) {
+      const mesh = new THREE.Mesh(this.driftSmokeGeo, this.driftSmokeMat.clone());
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.driftSmokePool.push({ mesh, vel: new THREE.Vector3(), life: 0, maxLife: 0.65 });
+    }
+
+    this.sparkGeo = new THREE.BoxGeometry(0.06, 0.06, 0.28);
+    this.sparkMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    for (let i = 0; i < 24; i++) {
+      const mesh = new THREE.Mesh(this.sparkGeo, this.sparkMat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.sparkPool.push({ mesh, vel: new THREE.Vector3(), life: 0, maxLife: 0.45 });
+    }
+  }
+
+  private setupGhostCar(carConfig: SuperCarConfig) {
+    const saved = loadSavedGhost();
+    this.savedGhostFrames = saved?.frames || null;
+
+    this.ghostMeshes = createSportsCar(carConfig, undefined, { isGhost: true });
+    const label = saved ? `BEST LAP • ${(saved.lapMs / 1000).toFixed(1)}s` : 'APEX PACE RIVAL';
+    const plate = createPlayerNameplate(label, '#00e5ff');
+    plate.scale.set(2.8, 0.7, 1.0);
+    this.ghostMeshes.root.add(plate);
+    this.ghostMeshes.root.position.set(-2.5, 0.64, 14);
+    this.scene.add(this.ghostMeshes.root);
+  }
+
+  private setupTunnelHeadlight() {
+    this.tunnelHeadlight = new THREE.PointLight(0xe0f7ff, 0, 52, 1.4);
+    this.tunnelHeadlight.position.set(0, 1.2, 6.0);
+    this.carMeshes.root.add(this.tunnelHeadlight);
+  }
+
+  private spawnDriftSmoke(pos: THREE.Vector3, heading: number) {
+    const rightX = Math.cos(heading);
+    const rightZ = -Math.sin(heading);
+    const backX = -Math.sin(heading);
+    const backZ = -Math.cos(heading);
+
+    for (const side of [-0.78, 0.78]) {
+      const slot = this.driftSmokePool.find((p) => p.life <= 0);
+      if (!slot) break;
+      slot.life = slot.maxLife;
+      slot.mesh.position.set(
+        pos.x + rightX * side + backX * 1.45,
+        pos.y - 0.12,
+        pos.z + rightZ * side + backZ * 1.45
+      );
+      slot.mesh.scale.setScalar(0.55);
+      slot.vel.set((Math.random() - 0.5) * 1.8, 1.1 + Math.random() * 0.8, (Math.random() - 0.5) * 1.8);
+      (slot.mesh.material as THREE.MeshStandardMaterial).opacity = 0.36;
+      slot.mesh.visible = true;
+    }
+  }
+
+  private spawnCollisionSparks(worldPos: THREE.Vector3, intensity: number = 1.0) {
+    const count = Math.min(12, Math.max(4, Math.round(intensity * 10)));
+    let spawned = 0;
+    for (let i = 0; i < this.sparkPool.length && spawned < count; i++) {
+      const sp = this.sparkPool[i];
+      if (sp.life > 0) continue;
+      sp.life = 0.28 + Math.random() * 0.18;
+      sp.maxLife = sp.life;
+      sp.mesh.position.set(worldPos.x, worldPos.y + 0.35, worldPos.z);
+      sp.vel.set(
+        (Math.random() - 0.5) * 14 * Math.max(0.5, intensity),
+        3.5 + Math.random() * 6.5,
+        (Math.random() - 0.5) * 14 * Math.max(0.5, intensity)
+      );
+      sp.mesh.visible = true;
+      spawned++;
+    }
+  }
+
+  private updateParticles(delta: number) {
+    for (let i = 0; i < this.driftSmokePool.length; i++) {
+      const p = this.driftSmokePool[i];
+      if (p.life <= 0) continue;
+      p.life -= delta;
+      if (p.life <= 0) {
+        p.mesh.visible = false;
+        continue;
+      }
+      p.mesh.position.addScaledVector(p.vel, delta);
+      const t = 1.0 - p.life / p.maxLife;
+      p.mesh.scale.setScalar(0.55 + t * 2.1);
+      (p.mesh.material as THREE.MeshStandardMaterial).opacity = (1.0 - t) * 0.34;
+    }
+
+    for (let i = 0; i < this.sparkPool.length; i++) {
+      const sp = this.sparkPool[i];
+      if (sp.life <= 0) continue;
+      sp.life -= delta;
+      if (sp.life <= 0) {
+        sp.mesh.visible = false;
+        continue;
+      }
+      sp.vel.y -= 18.0 * delta;
+      sp.mesh.position.addScaledVector(sp.vel, delta);
+      sp.mesh.lookAt(
+        sp.mesh.position.x + sp.vel.x,
+        sp.mesh.position.y + sp.vel.y,
+        sp.mesh.position.z + sp.vel.z
+      );
+    }
+  }
+
+  private updateGhostCar(delta: number, telemetry: VehicleTelemetry, isCountdownLocked: boolean) {
+    if (!this.ghostMeshes) return;
+    if (this.isMultiplayerActive) {
+      this.ghostMeshes.root.visible = false;
+      return;
+    }
+
+    this.ghostMeshes.root.visible = true;
+
+    if (isCountdownLocked) {
+      if (this.savedGhostFrames && this.savedGhostFrames.length > 0) {
+        const f = this.savedGhostFrames[0];
+        this.ghostMeshes.root.position.set(f.x, f.y, f.z);
+        this.ghostMeshes.root.rotation.set(f.pitch, f.yaw, f.roll, 'YXZ');
+      } else {
+        const pt = this.track.splineCurve.getPoint(0.004);
+        const tang = this.track.splineCurve.getTangent(0.004);
+        const binorm = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
+        const pos = pt.clone().addScaledVector(binorm, -2.6);
+        this.ghostMeshes.root.position.set(pos.x, pos.y + 0.64, pos.z);
+        this.ghostMeshes.root.rotation.set(0, Math.atan2(tang.x, tang.z), 0, 'YXZ');
+      }
+      return;
+    }
+
+    // Record player's active lap trajectory every 100ms (capped cleanly at 2500 samples)
+    if (
+      (telemetry.lapTimeMs || 0) < 250 &&
+      this.ghostRecordingFrames.length > 10 &&
+      this.ghostRecordingFrames[this.ghostRecordingFrames.length - 1].timeMs > 2000
+    ) {
+      this.ghostRecordingFrames = [];
+    }
+    this.ghostSampleTimer += delta;
+    if (this.ghostSampleTimer >= 0.1 && this.ghostRecordingFrames.length < 2500) {
+      this.ghostSampleTimer = 0;
+      this.ghostRecordingFrames.push({
+        timeMs: telemetry.lapTimeMs || 0,
+        x: Number(this.vehiclePhysics.position.x.toFixed(2)),
+        y: Number(this.vehiclePhysics.position.y.toFixed(2)),
+        z: Number(this.vehiclePhysics.position.z.toFixed(2)),
+        yaw: Number(this.vehiclePhysics.rotation.y.toFixed(3)),
+        pitch: Number(this.vehiclePhysics.rotation.x.toFixed(3)),
+        roll: Number(this.vehiclePhysics.rotation.z.toFixed(3))
+      });
+    }
+
+    if (this.vehiclePhysics.didCompleteLap) {
+      if (this.vehiclePhysics.didSetBestLap || !this.savedGhostFrames) {
+        this.savedGhostFrames = [...this.ghostRecordingFrames];
+        saveBestGhost(
+          this.vehiclePhysics.lastCompletedLapMs,
+          this.currentCarConfig.id,
+          this.savedGhostFrames
+        );
+      }
+      this.ghostRecordingFrames = [];
+    }
+
+    if (this.savedGhostFrames && this.savedGhostFrames.length > 2) {
+      const targetTime = telemetry.lapTimeMs || 0;
+      const frames = this.savedGhostFrames;
+      // Binary search current frame bracket
+      let lo = 0;
+      let hi = frames.length - 1;
+      while (lo < hi - 1) {
+        const mid = (lo + hi) >> 1;
+        if (frames[mid].timeMs <= targetTime) lo = mid;
+        else hi = mid;
+      }
+      const a = frames[lo];
+      const b = frames[hi];
+      const span = Math.max(1, b.timeMs - a.timeMs);
+      const alpha = THREE.MathUtils.clamp((targetTime - a.timeMs) / span, 0, 1);
+
+      this.ghostMeshes.root.position.set(
+        THREE.MathUtils.lerp(a.x, b.x, alpha),
+        THREE.MathUtils.lerp(a.y, b.y, alpha),
+        THREE.MathUtils.lerp(a.z, b.z, alpha)
+      );
+      this.ghostMeshes.root.rotation.set(
+        THREE.MathUtils.lerp(a.pitch, b.pitch, alpha),
+        THREE.MathUtils.lerp(a.yaw, b.yaw, alpha),
+        THREE.MathUtils.lerp(a.roll, b.roll, alpha),
+        'YXZ'
+      );
+    } else {
+      // Built-in AI Pace Car (~195 km/h circuit pace) when player hasn't recorded a full lap yet
+      this.ghostPaceT = (this.ghostPaceT + 0.0042 * delta) % 1.0;
+      const pt = this.track.splineCurve.getPoint(this.ghostPaceT);
+      const tang = this.track.splineCurve.getTangent(this.ghostPaceT);
+      const binorm = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
+      const pos = pt.clone().addScaledVector(binorm, -2.6);
+      this.ghostMeshes.root.position.set(pos.x, pos.y + 0.64, pos.z);
+      this.ghostMeshes.root.rotation.set(
+        -Math.asin(THREE.MathUtils.clamp(tang.y, -0.4, 0.4)),
+        Math.atan2(tang.x, tang.z),
+        0,
+        'YXZ'
+      );
+    }
+  }
+
   public setCar(carConfig: SuperCarConfig) {
     this.currentCarConfig = carConfig;
     this.vehiclePhysics.applyCarConfig(carConfig);
 
+    if (this.tunnelHeadlight) {
+      this.carMeshes.root.remove(this.tunnelHeadlight);
+    }
     this.scene.remove(this.carMeshes.root);
     this.carMeshes = createSportsCar(carConfig, (loadedMeshes) => {
       if (this.isDisposed) return;
       this.carMeshes = loadedMeshes;
       this.setupNitroFlames();
       this.setupTaillights();
+      if (this.tunnelHeadlight) this.carMeshes.root.add(this.tunnelHeadlight);
     });
     this.scene.add(this.carMeshes.root);
     this.setupNitroFlames();
     this.setupTaillights();
+    if (this.tunnelHeadlight) this.carMeshes.root.add(this.tunnelHeadlight);
   }
 
   public syncOpponents(opponents: RemotePlayerState[]) {
@@ -553,20 +829,30 @@ export class GameEngine {
       }
     }
 
-    // 3. Stunt Ramp Launch (Oriented to ramp position)
-    if (!isCountdownLocked) {
+    // 3. Stunt Ramp Lip Launch (Strict OBB deck trigger at ramp kicker lip)
+    if (!isCountdownLocked && !this.vehiclePhysics.isAirborne && this.vehiclePhysics.speedKmh > 52) {
       for (const ramp of this.track.ramps) {
-        const dist = this.vehiclePhysics.position.distanceTo(ramp.position);
-        if (dist < 5.5 && this.vehiclePhysics.speedKmh > 55 && !this.vehiclePhysics.isAirborne) {
-          const upwardImpulse = Math.min(20, 11.5 + (this.vehiclePhysics.speedKmh / 200) * 8);
+        const dx = this.vehiclePhysics.position.x - ramp.position.x;
+        const dz = this.vehiclePhysics.position.z - ramp.position.z;
+        const localSide = dx * ramp.binormal.x + dz * ramp.binormal.z;
+        const localFwd = dx * ramp.tangent.x + dz * ramp.tangent.z;
+
+        if (
+          Math.abs(localSide) < ramp.width * 0.56 &&
+          localFwd > ramp.length * 0.14 &&
+          localFwd < ramp.length * 0.58
+        ) {
+          const upwardImpulse = Math.min(20, 12.0 + (this.vehiclePhysics.speedKmh / 200) * 8);
           this.vehiclePhysics.launchRamp(upwardImpulse);
+          break;
         }
       }
     }
 
-    // 4. Advance Vehicle Physics
+    // 4. Advance Vehicle Physics (with Asphalt 9 cinematic slow-mo time dilation during ramp jumps!)
+    const simDelta = this.vehiclePhysics.isJumping ? delta * 0.72 : delta;
     const telemetry = this.vehiclePhysics.update(
-      delta,
+      simDelta,
       { ...input, reset: shouldReset },
       (x, z) => this.track.getElevationAt(x, z),
       (x, z) => this.track.getClosestSplinePoint(x, z),
@@ -574,7 +860,9 @@ export class GameEngine {
     );
     telemetry.cameraMode = this.cameraMode;
 
-    if (this.vehiclePhysics.didAutoShiftDown) {
+    if (this.vehiclePhysics.didAutoShiftUp) {
+      this.onGearShiftCallback?.(true);
+    } else if (this.vehiclePhysics.didAutoShiftDown) {
       this.onGearShiftCallback?.(false);
     }
 
@@ -583,13 +871,23 @@ export class GameEngine {
       this.onDriftBankCallback?.(this.vehiclePhysics.lastBankedDrift);
     }
 
-    // 5. Guardrail Scrape Audio & Visual Shake with 380ms Cooldown (Zero 60Hz Audio Glitch!)
+    // Touchdown suspension compression & dust/spark burst after big airtime
+    if (telemetry.didJustLand) {
+      const strength = this.vehiclePhysics.lastLandingStrength;
+      this.triggerNfsImpact(0, 1, 0.55 + strength * 0.45);
+      this.onCrashCallback?.(0.24 + strength * 0.2);
+      this.spawnDriftSmoke(this.vehiclePhysics.position, this.vehiclePhysics.rotation.y);
+      this.spawnCollisionSparks(this.vehiclePhysics.position, strength * 0.6);
+    }
+
+    // 5. Guardrail Scrape Audio, Sparks & Visual Shake with 380ms Cooldown (Zero 60Hz Audio Glitch!)
     if (this.vehiclePhysics.hadBarrierCollision && this.vehiclePhysics.speedKmh > 12) {
       const now = performance.now();
       if (now - this.lastBarrierCrashSoundTime > 380) {
         this.lastBarrierCrashSoundTime = now;
         this.triggerNfsImpact(-Math.sign(input.steer || 1), 0, 0.4);
         this.onCrashCallback?.(0.35);
+        this.spawnCollisionSparks(this.vehiclePhysics.position, 0.75);
       }
     }
 
@@ -607,15 +905,16 @@ export class GameEngine {
       }
     }
 
-    // 7. Dynamic Civilian Traffic AI (Exact OBB Collisions)
+    // 7. Dynamic Civilian Traffic AI (Exact OBB Collisions + Sparks!)
     this.trafficStates = this.trafficManager.update(
-      delta,
+      simDelta,
       this.vehiclePhysics.position,
       this.vehiclePhysics.speedKmh,
-      (normalX, normalZ, impactSpeedKmh) => {
+      (normalX, normalZ, impactSpeedKmh, hitPos) => {
         this.vehiclePhysics.applyObstacleCollision(normalX, normalZ, impactSpeedKmh);
         this.triggerNfsImpact(normalX, normalZ, impactSpeedKmh / 120);
         this.onCrashCallback?.(impactSpeedKmh / 95);
+        this.spawnCollisionSparks(hitPos, Math.max(0.6, impactSpeedKmh / 110));
       },
       () => {
         this.nearMissActive = true;
@@ -636,7 +935,7 @@ export class GameEngine {
       opp.meshes.root.position.lerp(opp.targetPos, Math.min(1, delta * 15));
       opp.meshes.root.quaternion.slerp(opp.targetQuat, Math.min(1, delta * 15));
 
-      const spin = (opp.currentSpeed * delta) / 0.35;
+      const spin = ((opp.currentSpeed * delta) / 0.35) * opp.meshes.wheelSpinSign;
       opp.meshes.wheels.forEach((w) => {
         w.rotation.x += spin;
       });
@@ -661,11 +960,21 @@ export class GameEngine {
       }
     });
 
-    // 9. Sync 3D Player Car Mesh, Wheels, VFX & Smoke
-    const { root, wheels, frontWheels } = this.carMeshes;
+    // 9. Sync 3D Player Car Mesh, Wheels, VFX, Tunnel Lights, Ghost & Smoke
+    const { root, wheels, frontWheels, wheelSpinSign } = this.carMeshes;
     root.position.copy(this.vehiclePhysics.position);
     root.quaternion.copy(this.vehiclePhysics.quaternion);
     this.carMeshes.applyDamageVisuals(telemetry.health);
+
+    if (this.tunnelHeadlight) {
+      const tProg = telemetry.trackProgress || 0;
+      const inTunnel = tProg >= 0.515 && tProg <= 0.615;
+      this.tunnelHeadlight.intensity = THREE.MathUtils.lerp(
+        this.tunnelHeadlight.intensity,
+        inTunnel ? 16.0 : 0,
+        Math.min(1, delta * 6)
+      );
+    }
 
     if (telemetry.health < 80) {
       const now = performance.now() * 0.003;
@@ -696,7 +1005,7 @@ export class GameEngine {
     }
 
     const forwardSpeed = this.vehiclePhysics.velocity.z;
-    const wheelSpinRate = (forwardSpeed * delta) / 0.35;
+    const wheelSpinRate = ((forwardSpeed * simDelta) / 0.35) * wheelSpinSign;
     wheels.forEach((wheel) => {
       wheel.rotation.x += wheelSpinRate;
     });
@@ -742,7 +1051,7 @@ export class GameEngine {
       }
     }
 
-    // Tire Skid Marks (aligned cleanly with chassis yaw angle during drift!)
+    // Tire Skid Marks + Drift Tire Smoke
     const isSkidding =
       !isCountdownLocked &&
       (telemetry.isDrifting || input.handbrake || (input.brake > 0.35 && telemetry.speedKmh > 40)) &&
@@ -753,7 +1062,16 @@ export class GameEngine {
         this.addSkidMark(this.vehiclePhysics.position, this.vehiclePhysics.rotation.y);
         this.lastSkidPos.copy(this.vehiclePhysics.position);
       }
+
+      this.driftSmokeCooldown -= delta;
+      if (this.driftSmokeCooldown <= 0 && telemetry.speedKmh > 25) {
+        this.driftSmokeCooldown = 0.055;
+        this.spawnDriftSmoke(this.vehiclePhysics.position, this.vehiclePhysics.rotation.y);
+      }
     }
+
+    this.updateParticles(delta);
+    this.updateGhostCar(simDelta, telemetry, isCountdownLocked);
 
     // 10. Dynamic Camera & Sky Follow
     this.updateCamera(delta, telemetry, input);
@@ -773,14 +1091,16 @@ export class GameEngine {
     const forwardZ = Math.cos(heading);
 
     const speedRatio = Math.min(1, telemetry.speedKmh / 280);
-    const targetFov = this.baseFov + speedRatio * 15 + (input.nitro && telemetry.nitroFuel > 0 ? 7 : 0);
+    const targetFov = telemetry.isJumping
+      ? 78
+      : this.baseFov + speedRatio * 15 + (input.nitro && telemetry.nitroFuel > 0 ? 7 : 0);
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, delta * 6);
     this.camera.updateProjectionMatrix();
 
-    this.camera.up.set(0, 1, 0);
-
     if (telemetry.isJumping) {
       this.isLetterboxed = true;
+      this.smoothJumpTilt = THREE.MathUtils.lerp(this.smoothJumpTilt, 0.24, Math.min(1, delta * 7));
+      this.camera.up.set(Math.sin(this.smoothJumpTilt), Math.cos(this.smoothJumpTilt), 0).normalize();
       const sideAngle = heading + 0.58;
       const jumpCamPos = new THREE.Vector3(
         carPos.x + Math.sin(sideAngle) * 5.8,
@@ -793,6 +1113,8 @@ export class GameEngine {
       return;
     }
 
+    this.smoothJumpTilt = THREE.MathUtils.lerp(this.smoothJumpTilt, 0, Math.min(1, delta * 12));
+    this.camera.up.set(Math.sin(this.smoothJumpTilt), Math.cos(this.smoothJumpTilt), 0).normalize();
     this.isLetterboxed = false;
 
     if (this.cameraMode === 'hood') {
@@ -863,6 +1185,31 @@ export class GameEngine {
     this.damageSmokePuffs.forEach((puff) => this.scene.remove(puff));
     this.smokeGeo?.dispose();
     this.smokeMat?.dispose();
+
+    this.driftSmokePool.forEach((p) => {
+      this.scene.remove(p.mesh);
+      (p.mesh.material as THREE.Material).dispose();
+    });
+    this.driftSmokePool = [];
+    this.driftSmokeGeo?.dispose();
+    this.driftSmokeMat?.dispose();
+
+    this.sparkPool.forEach((sp) => this.scene.remove(sp.mesh));
+    this.sparkPool = [];
+    this.sparkGeo?.dispose();
+    this.sparkMat?.dispose();
+
+    if (this.ghostMeshes) {
+      this.scene.remove(this.ghostMeshes.root);
+      this.ghostMeshes.root.traverse((obj) => {
+        if ((obj as THREE.Sprite).isSprite) {
+          const sp = obj as THREE.Sprite;
+          sp.material.map?.dispose();
+          sp.material.dispose();
+        }
+      });
+      this.ghostMeshes = null;
+    }
 
     if (this.skidMarkMeshes.length > 0) {
       this.skidMarkMeshes[0].geometry.dispose();

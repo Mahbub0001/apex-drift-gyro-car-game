@@ -6,6 +6,7 @@ interface TrafficEntity {
   id: string;
   type: 'sedan' | 'suv' | 'truck' | 'van' | 'taxi';
   mesh: THREE.Group;
+  tailMat: THREE.MeshBasicMaterial | null;
   t: number;             // Position along spline [0, 1]
   baseSpeed: number;     // Speed along spline
   speed: number;
@@ -16,6 +17,7 @@ interface TrafficEntity {
   height: number;
   hasTriggeredNearMiss: boolean;
   lateralImpulse: number;
+  brakeFlashTimer: number;
   lastCollisionTime: number;
 }
 
@@ -96,7 +98,7 @@ export class TrafficManager {
   private buildCarFromTemplate(
     type: string,
     color: number
-  ): { mesh: THREE.Group; width: number; length: number; height: number } {
+  ): { mesh: THREE.Group; tailMat: THREE.MeshBasicMaterial; width: number; length: number; height: number } {
     const group = new THREE.Group();
     let template = this.templates.get(type);
 
@@ -156,7 +158,7 @@ export class TrafficManager {
     headR.position.x = width * 0.36;
     group.add(headL, headR);
 
-    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff002b });
+    const tailMat = new THREE.MeshBasicMaterial({ color: 0xaa001c });
     const tailGeo = new THREE.BoxGeometry(0.32, 0.1, 0.05);
     const tailL = new THREE.Mesh(tailGeo, tailMat);
     tailL.position.set(-width * 0.36, height * 0.4, -length * 0.46);
@@ -164,7 +166,7 @@ export class TrafficManager {
     tailR.position.x = width * 0.36;
     group.add(tailL, tailR);
 
-    return { mesh: group, width, length, height };
+    return { mesh: group, tailMat, width, length, height };
   }
 
   private applyTemplatesToTraffic() {
@@ -173,10 +175,11 @@ export class TrafficManager {
         car.mesh.remove(car.mesh.children[0]);
       }
 
-      const { mesh, width, length, height } = this.buildCarFromTemplate(car.type, car.color);
+      const { mesh, tailMat, width, length, height } = this.buildCarFromTemplate(car.type, car.color);
       while (mesh.children.length > 0) {
         car.mesh.add(mesh.children[0]);
       }
+      car.tailMat = tailMat;
       car.width = width;
       car.length = length;
       car.height = height;
@@ -201,7 +204,7 @@ export class TrafficManager {
     for (let i = 0; i < numTraffic; i++) {
       const type = types[i % types.length];
       const color = this.trafficColors[i % this.trafficColors.length];
-      const { mesh, width, length, height } = this.buildCarFromTemplate(type, color);
+      const { mesh, tailMat, width, length, height } = this.buildCarFromTemplate(type, color);
 
       const t = 0.03 + (i / numTraffic) * 0.92;
       const lane = lanes[i % lanes.length];
@@ -222,6 +225,7 @@ export class TrafficManager {
         id: `traffic-${i}`,
         type,
         mesh,
+        tailMat,
         t,
         baseSpeed,
         speed: baseSpeed,
@@ -232,6 +236,7 @@ export class TrafficManager {
         height,
         hasTriggeredNearMiss: false,
         lateralImpulse: 0,
+        brakeFlashTimer: 0,
         lastCollisionTime: 0
       });
     }
@@ -249,8 +254,14 @@ export class TrafficManager {
 
     for (let i = 0; i < this.trafficList.length; i++) {
       const car = this.trafficList[i];
-      car.speed = THREE.MathUtils.lerp(car.speed, car.baseSpeed, Math.min(1, delta * 1.5));
+      car.speed = THREE.MathUtils.lerp(car.speed, car.baseSpeed, Math.min(1, delta * 1.4));
       car.lateralImpulse = THREE.MathUtils.lerp(car.lateralImpulse, 0, Math.min(1, delta * 2.5));
+      if (car.brakeFlashTimer > 0) {
+        car.brakeFlashTimer = Math.max(0, car.brakeFlashTimer - delta);
+        if (car.tailMat) car.tailMat.color.setHex(0xff1a2d);
+      } else if (car.tailMat) {
+        car.tailMat.color.setHex(0x880015);
+      }
 
       car.t = (car.t + car.speed * delta) % 1.0;
       if (car.t < 0) car.t += 1.0;
@@ -293,7 +304,13 @@ export class TrafficManager {
           const normalX = dx / len;
           const normalZ = dz / len;
 
-          car.speed += 0.007;
+          // Realistic momentum reaction (small bounded bump if rear-ended, braking recovery otherwise — never rocket-launching!)
+          if (localFwd < -0.5) {
+            car.speed = Math.min(car.baseSpeed * 1.45, car.speed + 0.0005);
+          } else {
+            car.speed = car.baseSpeed * 0.45;
+          }
+          car.brakeFlashTimer = 1.4;
           car.lateralImpulse += localSide >= 0 ? -1.8 : 1.8;
 
           onCollision(normalX, normalZ, playerSpeedKmh, this.reusableWorldPos);
