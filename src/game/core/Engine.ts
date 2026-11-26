@@ -140,6 +140,12 @@ export class GameEngine {
   private canvas: HTMLCanvasElement;
   public cameraMode: 'chase' | 'hood' = 'chase';
   private cameraTarget: THREE.Vector3 = new THREE.Vector3();
+  private smoothedCamHeading: number = 0;
+  private smoothedCamY: number = 2.79;
+  private smoothedLookY: number = 1.44;
+  private smoothedCamDistance: number = 6.4;
+  private smoothedDriftOffset: number = 0;
+  private hasInitializedCam: boolean = false;
   private baseFov: number = 60;
   private skyDome: THREE.Mesh;
   private envTexture: THREE.Texture | null = null;
@@ -330,6 +336,7 @@ export class GameEngine {
     const targetSpawn = this.multiplayerSpawnPos ? this.multiplayerSpawnPos.clone() : new THREE.Vector3(0, 0.64, 10);
     this.vehiclePhysics.resetPosition(targetSpawn);
     this.lastSkidPos.copy(this.vehiclePhysics.position);
+    this.hasInitializedCam = false;
   }
 
   public shiftGearUp() {
@@ -812,6 +819,9 @@ export class GameEngine {
         shouldReset = true;
       }
     }
+    if (shouldReset) {
+      this.hasInitializedCam = false;
+    }
 
     // 2b. Edge-Triggered WebRTC Manual Gear Shift Sequences (handles reconnects & UDP packet loss cleanly)
     if (typeof input.shiftUpSeq === 'number') {
@@ -1087,19 +1097,18 @@ export class GameEngine {
     const carPos = this.vehiclePhysics.position;
     const heading = this.vehiclePhysics.rotation.y - this.vehiclePhysics.driftYawAngle * 0.55;
 
-    const forwardX = Math.sin(heading);
-    const forwardZ = Math.cos(heading);
-
-    const speedRatio = Math.min(1, telemetry.speedKmh / 280);
+    const continuousSpeedKmh = Math.abs(this.vehiclePhysics.velocity.z) * 3.6;
+    const speedRatio = Math.min(1, continuousSpeedKmh / 280);
     const targetFov = telemetry.isJumping
       ? 78
       : this.baseFov + speedRatio * 15 + (input.nitro && telemetry.nitroFuel > 0 ? 7 : 0);
-    this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, delta * 6);
+    const fovAlpha = 1 - Math.exp(-6 * delta);
+    this.camera.fov += (targetFov - this.camera.fov) * fovAlpha;
     this.camera.updateProjectionMatrix();
 
     if (telemetry.isJumping) {
       this.isLetterboxed = true;
-      this.smoothJumpTilt = THREE.MathUtils.lerp(this.smoothJumpTilt, 0.24, Math.min(1, delta * 7));
+      this.smoothJumpTilt = THREE.MathUtils.lerp(this.smoothJumpTilt, 0.24, 1 - Math.exp(-7 * delta));
       this.camera.up.set(Math.sin(this.smoothJumpTilt), Math.cos(this.smoothJumpTilt), 0).normalize();
       const sideAngle = heading + 0.58;
       const jumpCamPos = new THREE.Vector3(
@@ -1107,13 +1116,17 @@ export class GameEngine {
         carPos.y + 0.7,
         carPos.z + Math.cos(sideAngle) * 5.8
       );
-      this.camera.position.lerp(jumpCamPos, Math.min(1, delta * 8));
+      this.camera.position.lerp(jumpCamPos, 1 - Math.exp(-8 * delta));
       this.cameraTarget.copy(carPos).add(new THREE.Vector3(0, 0.5, 0));
       this.camera.lookAt(this.cameraTarget);
+      // Keep chase state aligned so touchdown transitions seamlessly
+      this.smoothedCamHeading = heading;
+      this.smoothedCamY = carPos.y + 2.15;
+      this.smoothedLookY = carPos.y + 0.8;
       return;
     }
 
-    this.smoothJumpTilt = THREE.MathUtils.lerp(this.smoothJumpTilt, 0, Math.min(1, delta * 12));
+    this.smoothJumpTilt = THREE.MathUtils.lerp(this.smoothJumpTilt, 0, 1 - Math.exp(-12 * delta));
     this.camera.up.set(Math.sin(this.smoothJumpTilt), Math.cos(this.smoothJumpTilt), 0).normalize();
     this.isLetterboxed = false;
 
@@ -1121,40 +1134,65 @@ export class GameEngine {
       const carHeading = this.vehiclePhysics.rotation.y;
       const carFwdX = Math.sin(carHeading);
       const carFwdZ = Math.cos(carHeading);
-      const hoodPos = new THREE.Vector3(
+      this.camera.position.set(
         carPos.x + carFwdX * 1.1,
         carPos.y + 1.05,
         carPos.z + carFwdZ * 1.1
       );
-      this.camera.position.copy(hoodPos);
 
-      const lookTarget = new THREE.Vector3(
+      this.cameraTarget.set(
         carPos.x + carFwdX * 35,
         carPos.y + 0.95,
         carPos.z + carFwdZ * 35
       );
-      this.camera.lookAt(lookTarget);
+      this.camera.lookAt(this.cameraTarget);
     } else {
-      const driftOffset = telemetry.isDrifting ? -input.steer * 0.85 : 0;
-      const rightX = forwardZ;
-      const rightZ = -forwardX;
+      if (!this.hasInitializedCam) {
+        this.smoothedCamHeading = heading;
+        this.smoothedCamY = carPos.y + 2.15;
+        this.smoothedLookY = carPos.y + 0.8;
+        this.smoothedCamDistance = 6.4;
+        this.smoothedDriftOffset = 0;
+        this.hasInitializedCam = true;
+      } else {
+        const headingAlpha = 1 - Math.exp(-11 * delta);
+        const verticalAlpha = 1 - Math.exp(-18 * delta);
+        const distAlpha = 1 - Math.exp(-7 * delta);
+        const driftAlpha = 1 - Math.exp(-8 * delta);
 
-      const camDistance = input.nitro && telemetry.nitroFuel > 0 ? 7.1 : 6.4;
-      const idealCamPos = new THREE.Vector3(
-        carPos.x - forwardX * camDistance + rightX * driftOffset,
-        carPos.y + 2.15,
-        carPos.z - forwardZ * camDistance + rightZ * driftOffset
+        let angleDiff = (heading - this.smoothedCamHeading) % (Math.PI * 2);
+        if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        this.smoothedCamHeading += angleDiff * headingAlpha;
+
+        const targetDist = input.nitro && telemetry.nitroFuel > 0 ? 7.05 : 6.4;
+        this.smoothedCamDistance += (targetDist - this.smoothedCamDistance) * distAlpha;
+
+        const targetDriftOffset = telemetry.isDrifting ? -input.steer * 0.85 : 0;
+        this.smoothedDriftOffset += (targetDriftOffset - this.smoothedDriftOffset) * driftAlpha;
+
+        this.smoothedCamY += (carPos.y + 2.15 - this.smoothedCamY) * verticalAlpha;
+        this.smoothedLookY += (carPos.y + 0.8 - this.smoothedLookY) * verticalAlpha;
+      }
+
+      // Anchor chase camera directly to carPos along smoothedCamHeading so frame-time variance
+      // never introduces longitudinal forward-backward jitter
+      const camFwdX = Math.sin(this.smoothedCamHeading);
+      const camFwdZ = Math.cos(this.smoothedCamHeading);
+      const camRightX = camFwdZ;
+      const camRightZ = -camFwdX;
+
+      this.camera.position.set(
+        carPos.x - camFwdX * this.smoothedCamDistance + camRightX * this.smoothedDriftOffset,
+        this.smoothedCamY,
+        carPos.z - camFwdZ * this.smoothedCamDistance + camRightZ * this.smoothedDriftOffset
       );
 
-      this.camera.position.lerp(idealCamPos, Math.min(1, delta * 12));
-
-      const targetLookAt = new THREE.Vector3(
-        carPos.x + forwardX * 6.0,
-        carPos.y + 0.8,
-        carPos.z + forwardZ * 6.0
+      this.cameraTarget.set(
+        carPos.x + camFwdX * 6.0,
+        this.smoothedLookY,
+        carPos.z + camFwdZ * 6.0
       );
-
-      this.cameraTarget.lerp(targetLookAt, Math.min(1, delta * 15));
       this.camera.lookAt(this.cameraTarget);
     }
 

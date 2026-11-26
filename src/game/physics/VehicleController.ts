@@ -608,7 +608,7 @@ export class VehiclePhysics {
     }
 
     // 10. Dynamic Suspension Pitch (Hill Slope + Throttle Squat / Brake Dive) & Body Roll
-    this.smoothedRoadPitch = THREE.MathUtils.lerp(this.smoothedRoadPitch, targetRoadSlopePitch, Math.min(1, delta * 9.5));
+    this.smoothedRoadPitch = THREE.MathUtils.lerp(this.smoothedRoadPitch, targetRoadSlopePitch, 1 - Math.exp(-10 * delta));
     const airPitch = this.isAirborne ? THREE.MathUtils.clamp(-this.verticalVelocity * 0.015, -0.22, 0.22) : 0;
     const targetRoll = this.isDrifting ? -this.currentSteerAngle * 0.42 : -this.currentSteerAngle * 0.16;
     const drivePitchSign = this.gear === 'R' ? 0.025 : -0.032;
